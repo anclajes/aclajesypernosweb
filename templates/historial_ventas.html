@@ -491,13 +491,22 @@
 
             </div>
 
-            <!-- FOOTER DEL MODAL CON BOTONES APILADOS EN MÓVIL -->
+                <!-- FOOTER DEL MODAL CON BOTONES APILADOS EN MÓVIL -->
             <div class="modal-footer bg-white d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-2 py-3">
                 
-                <a href="#" id="btn_descargar_modal" class="btn btn-outline-dark fw-bold shadow-sm w-100 w-md-auto mb-2 mb-md-0">
-                    <i class="bi bi-file-earmark-arrow-down-fill"></i> Descargar PDF
-                </a>
+                <!-- BLOQUE IZQUIERDO: Descargar y Anular -->
+                <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
+                    <a href="#" id="btn_descargar_modal" class="btn btn-outline-dark fw-bold shadow-sm w-100 w-md-auto mb-2 mb-md-0">
+                        <i class="bi bi-file-earmark-arrow-down-fill"></i> Descargar PDF
+                    </a>
+                    
+                    <!-- NUEVO: BOTÓN ANULAR (OCULTO POR DEFECTO) -->
+                    <button id="btn_anular_modal" class="btn btn-outline-danger fw-bold shadow-sm w-100 w-md-auto d-none" onclick="iniciarAnulacion()">
+                        <i class="bi bi-trash3-fill"></i> Anular Cotización
+                    </button>
+                </div>
 
+                <!-- BLOQUE DERECHO: Acciones de Flujo (Editar, Aprobar, etc) -->
                 <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
                     <button id="btn_ir_editar" class="btn btn-outline-secondary fw-bold w-100 w-md-auto" onclick="irAEditar()">
                         <i class="bi bi-pencil"></i> Editar
@@ -1022,14 +1031,37 @@ document.addEventListener("DOMContentLoaded", function() {
         const panelGerencia = document.getElementById('panel_acciones_gerencia');
         const panelVendedor = document.getElementById('panel_acciones_vendedor');
         const btnObservarGerencia = document.getElementById('btn_observar_gerencia');
+        const btnAnular = document.getElementById('btn_anular_modal');
+        
         
         btnEditar.classList.add('d-none'); 
         panelGerencia.classList.add('d-none'); 
         panelVendedor.classList.add('d-none');
+        btnAnular.classList.add('d-none');
 
         const miUsuarioId = parseInt("{{ session.get('user_id') }}");
         const esMiCotizacion = (parseInt(vendedor_id) === miUsuarioId);
         const esGerencia = (rol === 'admin' || rol === 'administracion');
+
+        // === LÓGICA PARA PERMITIR ANULACIÓN ===
+        // Bloqueamos la anulación si alguien más la está revisando o si ya terminó el flujo
+        const estadosBloqueadosParaAnular = [
+            'Por Verificar', // En Almacén
+            'Revision Pre-Cliente', // En Gerencia
+            'Pendiente Aprobacion Final', // En Gerencia final
+            'Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', // Incidencias
+            'Por Despachar', 'Despachado', 'Entregado' // Flujo logístico cerrado
+        ];
+
+        // Si es MI cotización y NO está en un estado bloqueado, puedo anularla
+        if (esMiCotizacion && !estadosBloqueadosParaAnular.includes(estado)) {
+            btnAnular.classList.remove('d-none');
+        }
+
+        // ... AQUÍ CONTINÚA EL RESTO DE TU LÓGICA ORIGINAL DE configurarBotones ...
+        if (['Cotizacion', 'Observado', 'Por Verificar', 'Stock Confirmado', 'Aprobado Pre-Cliente'].includes(estado) && esMiCotizacion) {
+            btnEditar.classList.remove('d-none'); 
+        }
 
         // Estados donde se permite anular libremente por el dueño o gerencia
         const estadosPermitidosAnular = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente', 'Por Despachar'];
@@ -1111,6 +1143,83 @@ document.addEventListener("DOMContentLoaded", function() {
                     <i class="bi bi-box-arrow-right"></i> APROBAR Y ENVIAR A ALMACÉN (DESPACHO)
                 </button>
             `;
+        }
+    }
+
+    // === NUEVA FUNCIÓN PARA ANULAR CON MOTIVOS ===
+    async function iniciarAnulacion() {
+        if(!ordenIdActual) return;
+
+        // 1. Mostrar Select de Motivos + Aviso
+        const { value: motivoSeleccionado } = await Swal.fire({
+            title: '¿Anular esta Cotización?',
+            html: `
+                <div class="alert alert-warning text-start small mb-3 shadow-sm border-warning" style="font-size: 0.85rem;">
+                    <i class="bi bi-info-circle-fill"></i> <b>Aviso Importante:</b><br>
+                    Al anular, esta cotización se moverá permanentemente a la pestaña <b>Incidencias</b>. Podrás consultarla cuando quieras, pero quedará bloqueada y ya no podrás editarla ni continuar su flujo.
+                </div>
+            `,
+            input: 'select',
+            inputOptions: {
+                'El Cliente desistió / No aceptó': 'El Cliente desistió / No aceptó',
+                'Error de tipeo o cálculo de precios': 'Error de tipeo o cálculo de precios',
+                'Producto sin stock (Falta definitiva)': 'Producto sin stock (Falta definitiva)',
+                'Se reemplazará por una cotización nueva': 'Se reemplazará por una cotización nueva',
+                'OTRO': 'Otro motivo (Especificar)...'
+            },
+            inputPlaceholder: 'Seleccione un motivo...',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Continuar <i class="bi bi-arrow-right"></i>',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value) return 'Debes seleccionar un motivo para continuar.';
+            }
+        });
+
+        if (motivoSeleccionado) {
+            let motivoFinal = motivoSeleccionado;
+
+            // 2. Si eligió "OTRO", pedir que lo escriba
+            if (motivoSeleccionado === 'OTRO') {
+                const { value: textoOtro } = await Swal.fire({
+                    title: 'Motivo Específico',
+                    text: 'Escribe de forma breve por qué estás anulando la cotización:',
+                    input: 'textarea',
+                    inputPlaceholder: 'Ej: El cliente pidió cambiar el RUC a última hora...',
+                    showCancelButton: true,
+                    confirmButtonText: 'Confirmar Anulación',
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonText: 'Atrás',
+                    inputValidator: (value) => {
+                        if (!value || value.trim() === '') return 'El motivo escrito no puede estar vacío.';
+                    }
+                });
+
+                if (!textoOtro) return; // Si le da a cancelar en la segunda pantalla, se detiene
+                motivoFinal = textoOtro;
+            }
+
+            // 3. Ejecutar la anulación en el servidor
+            bootstrap.Modal.getInstance(document.getElementById('modalDetalleCompleto')).hide();
+            Swal.fire({ title: 'Anulando Cotización...', didOpen: () => Swal.showLoading() });
+
+            fetch(`/api/anular_cotizacion/${ordenIdActual}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ motivo: motivoFinal })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    Swal.fire('¡Anulada!', data.msg, 'success').then(() => location.reload());
+                } else {
+                    Swal.fire('Error', data.msg, 'error');
+                }
+            })
+            .catch(() => Swal.fire('Error', 'Fallo de conexión con el servidor.', 'error'));
         }
     }
 
