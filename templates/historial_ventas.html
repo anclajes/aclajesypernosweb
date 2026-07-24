@@ -103,15 +103,24 @@
     </div>
 </div>
 
+<!-- LECTOR DE MOTIVO EXPANDIDO -->
+<div id="box_motivo_amplio" class="alert alert-danger border-danger mt-3 mb-2 d-none shadow-sm">
+    <div class="d-flex align-items-center justify-content-between">
+        <div>
+            <h6 class="fw-bold text-uppercase mb-1"><i class="bi bi-exclamation-octagon-fill"></i> Motivo de Incidencia / Anulación:</h6>
+            <div class="fw-bold text-dark fs-6" id="view_motivo_completo_texto">...</div>
+        </div>
+    </div>
+</div>
+
 <!-- TABLA PRINCIPAL RESPONSIVE -->
 <div class="card shadow-sm border-0">
-    <div class="card-body p-0 table-responsive" style="min-height: 300px;"> 
+    <div class="card-body p-0 table-responsive" style="min-height: 300px;">  
         <table class="table table-hover align-middle mb-0 text-nowrap">
             <thead class="bg-light small text-uppercase text-muted">
                 <tr>
                     <th class="ps-4">Código</th>
                     <th>F. Creación</th>
-                    <th>F. Entrega</th>
                     {% if vista_actual == 'incidencias' %}
                         <th>F. Incidencia</th>
                         <th>Motivo del Rechazo/Anulación</th>
@@ -140,10 +149,9 @@
                                 <span class="text-muted" style="font-size:0.75rem">{{ o.fecha.strftime('%H:%M') }}</span>
                             </div>
                         </td>
-                        <!-- REEMPLAZA LA COLUMNA DE FECHA EN TU TABLA -->
-                        <!-- COLUMNAS DINÁMICAS: ENTREGA (Normal) O INCIDENCIA (Pestaña 4) -->
+
+                        <!-- COLUMNAS DINÁMICAS SEGÚN VISTA -->
                         {% if vista_actual == 'incidencias' %}
-                            <!-- COLUMNA: F. Incidencia -->
                             <td>
                                 {% if o.fecha_cancelacion %}
                                     <div class="fw-bold text-dark"><i class="bi bi-calendar-x"></i> {{ o.fecha_cancelacion.strftime('%d/%m/%Y') }}</div>
@@ -155,50 +163,39 @@
                                     <span class="text-muted">---</span>
                                 {% endif %}
                             </td>
-
-                            <!-- COLUMNA: Motivo / Detalle -->
                             <td>
-                                <div class="text-wrap text-danger fw-bold" style="max-width: 250px; font-size: 0.8rem;">
+                                {% set texto_motivo = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo %}
+                                <div class="text-wrap text-danger fw-bold d-flex align-items-center gap-1" style="max-width: 250px; font-size: 0.8rem;">
                                     <i class="bi bi-exclamation-octagon-fill"></i> 
-                                    {{ o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo or 'Sin motivo registrado' }}
+                                    <span class="text-truncate" style="max-width: 180px;" title="{{ texto_motivo }}">{{ texto_motivo or 'Sin motivo registrado' }}</span>
+                                    {% if texto_motivo %}
+                                        <button type="button" class="btn btn-sm btn-link p-0 text-danger" onclick="verMotivoCompleto('{{ texto_motivo|e }}')" title="Leer motivo completo">
+                                            <i class="bi bi-search"></i>
+                                        </button>
+                                    {% endif %}
                                 </div>
                             </td>
                         {% else %}
-                            <!-- COLUMNA ORIGINAL: F. Entrega (Se muestra en el resto de pestañas) -->
                             <td>
                                 {% if o.fecha_entrega %}
                                     <div class="text-danger fw-bold mb-1">
                                         <i class="bi bi-calendar-check-fill"></i> {{ o.fecha_entrega.strftime('%d/%m/%Y') }}
                                     </div>
                                 {% endif %}
-                                
                                 {% if o.dias_habiles_entrega is not none and o.dias_habiles_entrega|string != '' %}
                                     {% if o.dias_habiles_entrega|string == '0' %}
-                                        <div class="badge bg-success text-white border border-success shadow-sm mb-1" title="Entrega Inmediata">
-                                            <i class="bi bi-lightning-charge-fill"></i> Inmediata (Hoy)
-                                        </div>
+                                        <div class="badge bg-success text-white shadow-sm mb-1"><i class="bi bi-lightning-charge-fill"></i> Inmediata</div>
                                     {% else %}
-                                        <div class="badge bg-warning text-dark border border-warning shadow-sm mb-1 calc-fecha-proyectada" data-dias="{{ o.dias_habiles_entrega }}" title="Días hábiles tras aprobar la OC">
-                                            <i class="bi bi-stopwatch"></i> {{ o.dias_habiles_entrega }} Días Háb. <span class="proyeccion-span text-danger fw-bold ms-1"></span>
+                                        <div class="badge bg-warning text-dark shadow-sm mb-1 calc-fecha-proyectada" data-dias="{{ o.dias_habiles_entrega }}">
+                                            <i class="bi bi-stopwatch"></i> {{ o.dias_habiles_entrega }} Días <span class="proyeccion-span text-danger fw-bold ms-1"></span>
                                         </div>
                                     {% endif %}
                                 {% elif not o.fecha_entrega %}
                                     <span class="text-muted fst-italic" style="font-size:0.75rem">A coordinar</span>
                                 {% endif %}
-                                
-                                <div class="mt-1 d-flex flex-column gap-1 align-items-start">
-                                    {% if o.control_calidad == 'SI' %}
-                                        <span class="badge bg-primary" style="font-size:0.65rem"><i class="bi bi-patch-check"></i> CERTIFICADO</span>
-                                    {% endif %}
-                                    {% if o.agencia and o.agencia != 'NO REQUIERE' %}
-                                        <span class="badge bg-info text-dark" style="font-size:0.65rem" title="Agencia"><i class="bi bi-truck"></i> {{ o.agencia|truncate(15) }}</span>
-                                    {% endif %}
-                                    {% if o.penalidad == 'SI' %}
-                                        <span class="badge bg-danger" style="font-size:0.65rem"><i class="bi bi-exclamation-octagon"></i> PENALIDAD</span>
-                                    {% endif %}
-                                </div>
                             </td>
                         {% endif %}
+
                         <td>
                             <div class="fw-bold text-truncate" style="max-width: 200px;">{{ o.cliente.nombre }}</div>
                             {% if o.orden_compra %}
@@ -212,34 +209,20 @@
                         <td class="text-center">
                             <span class="badge 
                                 {% if o.estado == 'Cotizacion' %}bg-secondary
-                                {% elif o.estado == 'Por Verificar' %}bg-info text-dark border border-info
-                                {% elif o.estado == 'Stock Confirmado' %}bg-success text-white
-                                {% elif o.estado == 'Revision Pre-Cliente' %}bg-warning text-dark border border-warning shadow-sm
-                                {% elif o.estado == 'Aprobado Pre-Cliente' %}bg-info bg-gradient text-dark border border-info shadow-sm
-                                {% elif o.estado == 'Pendiente Aprobacion Final' %}bg-warning text-danger fw-bold border border-danger shadow-sm
+                                {% elif o.estado == 'Por Verificar' %}bg-info text-dark
+                                {% elif o.estado == 'Stock Confirmado' %}bg-success
+                                {% elif o.estado == 'Revision Pre-Cliente' %}bg-warning text-dark
+                                {% elif o.estado == 'Aprobado Pre-Cliente' %}bg-info text-dark
+                                {% elif o.estado == 'Pendiente Aprobacion Final' %}bg-warning text-danger fw-bold
                                 {% elif o.estado == 'Observado' %}bg-danger
                                 {% elif o.estado == 'Por Despachar' %}bg-primary
-                                {% elif o.estado == 'Despachado' %}bg-success bg-opacity-75
+                                {% elif o.estado == 'Despachado' %}bg-success
                                 {% elif o.estado == 'Entregado' %}bg-success
                                 {% elif o.estado == 'Anulado' %}bg-dark
-                                {% elif o.estado == 'Despacho Cancelado' %}bg-danger bg-opacity-75 border border-danger text-white
-                                {% elif o.estado == 'Devuelto' %}bg-dark text-white border border-dark shadow-sm
+                                {% elif o.estado == 'Despacho Cancelado' %}bg-danger
+                                {% elif o.estado == 'Devuelto' %}bg-dark
                                 {% else %}bg-secondary{% endif %}">
-                                
-                                {% if o.estado == 'Cotizacion' %}📝 Borrador
-                                {% elif o.estado == 'Por Verificar' %}🔎 Almacén: Verificando
-                                {% elif o.estado == 'Stock Confirmado' %}📦 Stock OK
-                                {% elif o.estado == 'Revision Pre-Cliente' %}👀 Gerencia: Revisión
-                                {% elif o.estado == 'Aprobado Pre-Cliente' %}✅ Gerencia OK
-                                {% elif o.estado == 'Pendiente Aprobacion Final' %}⏳ Gerencia: Aprob. Final
-                                {% elif o.estado == 'Observado' %}⚠️ CORREGIR
-                                {% elif o.estado == 'Por Despachar' %}📦 Por Despachar
-                                {% elif o.estado == 'Despachado' %}🚚 Despachado
-                                {% elif o.estado == 'Entregado' %}✅ Entregado
-                                {% elif o.estado == 'Anulado' %}❌ Anulado
-                                {% elif o.estado == 'Despacho Cancelado' %}🚫 Despacho Cancelado
-                                {% elif o.estado == 'Devuelto' %}↩️ Devuelto (Almacén)
-                                {% else %}{{ o.estado }}{% endif %}
+                                {{ o.estado }}
                             </span>
                         </td>
                         <td class="text-center">
@@ -248,24 +231,14 @@
                                     <i class="bi bi-eye-fill text-primary"></i>
                                 </button>
                                 <a href="/descargar_cotizacion_v2/{{ o.id }}" class="btn btn-light border text-danger shadow-sm" title="Descargar PDF" target="_blank">
-                                    <i class="bi bi-file-pdf-fill"></i> COT
+                                    <i class="bi bi-file-pdf-fill"></i>
                                 </a>
-                                {% if o.estado in ['Por Despachar', 'Despachado', 'Entregado'] %}
-                                <a href="/descargar_nota_pedido/{{ o.id }}" class="btn btn-light border text-primary shadow-sm" title="Nota de Pedido" target="_blank">
-                                    <i class="bi bi-file-earmark-check-fill"></i> NP
-                                </a>
-                                {% endif %}
-                                {% if o.archivo_oc %}
-                                <a href="/ver_oc/{{ o.archivo_oc }}" class="btn btn-light border text-success shadow-sm fw-bold" title="Ver OC Adjunta" target="_blank">
-                                    <i class="bi bi-paperclip"></i> OC
-                                </a>
-                                {% endif %}
                             </div>
                         </td>
                     </tr>
                 {% else %}
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <div class="fs-1 opacity-25"><i class="bi bi-folder2-open"></i></div>
                             <p class="mt-2">No se encontraron registros en esta vista.</p>
                         </td>
@@ -273,7 +246,8 @@
                 {% endfor %}
             </tbody>
         </table>
-    </div> 
+    </div>
+</div> 
 
     <!-- PAGINACIÓN RESPONSIVE -->
     <div class="card-footer bg-white border-top py-3">
@@ -1057,6 +1031,16 @@ document.addEventListener("DOMContentLoaded", function() {
         const esMiCotizacion = (parseInt(vendedor_id) === miUsuarioId);
         const esGerencia = (rol === 'admin' || rol === 'administracion');
 
+        // Estados donde se permite anular libremente por el dueño o gerencia
+        const estadosPermitidosAnular = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente', 'Por Despachar'];
+        let botonAnularHtml = '';
+        
+        if ((esMiCotizacion || esGerencia) && estadosPermitidosAnular.includes(estado)) {
+            botonAnularHtml = `<button class="btn btn-outline-danger fw-bold shadow-sm w-100 w-md-auto me-md-auto" onclick="anularCotizacionActual(${id})">
+                <i class="bi bi-x-octagon-fill"></i> Anular Cotización
+            </button>`;
+        }
+
         // Puede editar en estados iniciales e intermedios si fue rechazado
         if (['Cotizacion', 'Observado', 'Por Verificar', 'Stock Confirmado', 'Aprobado Pre-Cliente'].includes(estado) && esMiCotizacion) {
             btnEditar.classList.remove('d-none'); 
@@ -1128,6 +1112,55 @@ document.addEventListener("DOMContentLoaded", function() {
                 </button>
             `;
         }
+    }
+
+    function anularCotizacionActual(id) {
+        Swal.fire({
+            title: '¿Anular Cotización?',
+            text: "Indique el motivo por el cual se está anulando esta cotización:",
+            input: 'textarea',
+            inputPlaceholder: 'Escriba el motivo detallado (ej: Cliente desistió, error de tipeo, otro...)',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Anular y Enviar a Incidencias',
+            confirmButtonColor: '#dc3545',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value || value.trim() === '') {
+                    return '¡El motivo es obligatorio para registrar la anulación!';
+                }
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                bootstrap.Modal.getInstance(document.getElementById('modalDetalleCompleto')).hide();
+                Swal.fire({ title: 'Anulando...', didOpen: () => { Swal.showLoading() } });
+                
+                fetch(`/api/anular_cotizacion/${id}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ motivo: result.value })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if(data.status === 'success') {
+                        Swal.fire('¡Anulado!', data.msg, 'success').then(() => location.reload());
+                    } else {
+                        Swal.fire('Error', data.msg, 'error');
+                    }
+                })
+                .catch(() => Swal.fire('Error', 'Fallo de conexión con el servidor', 'error'));
+            }
+        });
+    }
+
+    function verMotivoCompleto(texto) {
+        Swal.fire({
+            title: 'Detalle del Motivo',
+            text: texto,
+            icon: 'info',
+            confirmButtonText: 'Entendido',
+            confirmButtonColor: '#0d6efd'
+        });
     }
 
     function marcarConfirmacionCliente(id) {
