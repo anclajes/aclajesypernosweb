@@ -209,20 +209,34 @@
                         <td class="text-center">
                             <span class="badge 
                                 {% if o.estado == 'Cotizacion' %}bg-secondary
-                                {% elif o.estado == 'Por Verificar' %}bg-info text-dark
-                                {% elif o.estado == 'Stock Confirmado' %}bg-success
-                                {% elif o.estado == 'Revision Pre-Cliente' %}bg-warning text-dark
-                                {% elif o.estado == 'Aprobado Pre-Cliente' %}bg-info text-dark
-                                {% elif o.estado == 'Pendiente Aprobacion Final' %}bg-warning text-danger fw-bold
+                                {% elif o.estado == 'Por Verificar' %}bg-info text-dark border border-info
+                                {% elif o.estado == 'Stock Confirmado' %}bg-success text-white
+                                {% elif o.estado == 'Revision Pre-Cliente' %}bg-warning text-dark border border-warning shadow-sm
+                                {% elif o.estado == 'Aprobado Pre-Cliente' %}bg-info bg-gradient text-dark border border-info shadow-sm
+                                {% elif o.estado == 'Pendiente Aprobacion Final' %}bg-warning text-danger fw-bold border border-danger shadow-sm
                                 {% elif o.estado == 'Observado' %}bg-danger
                                 {% elif o.estado == 'Por Despachar' %}bg-primary
-                                {% elif o.estado == 'Despachado' %}bg-success
+                                {% elif o.estado == 'Despachado' %}bg-success bg-opacity-75
                                 {% elif o.estado == 'Entregado' %}bg-success
-                                {% elif o.estado == 'Anulado' %}bg-dark
-                                {% elif o.estado == 'Despacho Cancelado' %}bg-danger
-                                {% elif o.estado == 'Devuelto' %}bg-dark
+                                {% elif o.estado == 'Anulado' %}bg-dark text-white shadow-sm
+                                {% elif o.estado == 'Devuelto' %}bg-warning text-dark border border-warning shadow-sm
+                                {% elif o.estado == 'Despacho Cancelado' %}bg-danger border border-danger text-white shadow-sm
                                 {% else %}bg-secondary{% endif %}">
-                                {{ o.estado }}
+                                
+                                {% if o.estado == 'Cotizacion' %}📝 Borrador
+                                {% elif o.estado == 'Por Verificar' %}🔎 Almacén: Verificando
+                                {% elif o.estado == 'Stock Confirmado' %}📦 Stock OK
+                                {% elif o.estado == 'Revision Pre-Cliente' %}👀 Gerencia: Revisión
+                                {% elif o.estado == 'Aprobado Pre-Cliente' %}✅ Gerencia OK
+                                {% elif o.estado == 'Pendiente Aprobacion Final' %}⏳ Gerencia: Aprob. Final
+                                {% elif o.estado == 'Observado' %}⚠️ CORREGIR
+                                {% elif o.estado == 'Por Despachar' %}📦 Por Despachar
+                                {% elif o.estado == 'Despachado' %}🚚 Despachado
+                                {% elif o.estado == 'Entregado' %}✅ Entregado
+                                {% elif o.estado == 'Anulado' %}❌ Anulado
+                                {% elif o.estado == 'Despacho Cancelado' %}🚫 Despacho Cancelado
+                                {% elif o.estado == 'Devuelto' %}↩️ Devuelto (Almacén)
+                                {% else %}{{ o.estado }}{% endif %}
                             </span>
                         </td>
                         <td class="text-center">
@@ -491,32 +505,32 @@
 
             </div>
 
-                <!-- FOOTER DEL MODAL CON BOTONES APILADOS EN MÓVIL -->
-            <div class="modal-footer bg-white d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-2 py-3">
+            <!-- FOOTER DEL MODAL: Diseño Limpio y Jerárquico -->
+            <div class="modal-footer bg-light d-flex flex-wrap justify-content-between align-items-center py-3 border-top">
                 
-                <!-- BLOQUE IZQUIERDO: Descargar y Anular -->
-                <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
-                    <a href="#" id="btn_descargar_modal" class="btn btn-outline-dark fw-bold shadow-sm w-100 w-md-auto mb-2 mb-md-0">
-                        <i class="bi bi-file-earmark-arrow-down-fill"></i> Descargar PDF
-                    </a>
-                    
-                    <!-- NUEVO: BOTÓN ANULAR (OCULTO POR DEFECTO) -->
-                    <button id="btn_anular_modal" class="btn btn-outline-danger fw-bold shadow-sm w-100 w-md-auto d-none" onclick="iniciarAnulacion()">
-                        <i class="bi bi-trash3-fill"></i> Anular Cotización
+                <!-- BLOQUE IZQUIERDO: Acción Secundaria y Peligro -->
+                <div class="d-flex align-items-center gap-3 w-100 w-md-auto mb-3 mb-md-0 justify-content-center justify-content-md-start">
+                    <!-- BOTÓN ANULAR: Pequeño y sin fondo relleno para no destacar demasiado -->
+                    <button id="btn_anular_modal" class="btn btn-sm btn-outline-danger border-0 text-decoration-underline fw-bold d-none" onclick="iniciarAnulacion()">
+                        <i class="bi bi-trash3"></i> Anular Cotización
                     </button>
+                    
+                    <a href="#" id="btn_descargar_modal" class="btn btn-sm btn-outline-secondary shadow-sm">
+                        <i class="bi bi-file-pdf"></i> Descargar PDF
+                    </a>
                 </div>
 
-                <!-- BLOQUE DERECHO: Acciones de Flujo (Editar, Aprobar, etc) -->
-                <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
-                    <button id="btn_ir_editar" class="btn btn-outline-secondary fw-bold w-100 w-md-auto" onclick="irAEditar()">
-                        <i class="bi bi-pencil"></i> Editar
+                <!-- BLOQUE DERECHO: Acciones de Flujo (Grandes e importantes) -->
+                <div class="d-flex flex-wrap gap-2 w-100 w-md-auto justify-content-center justify-content-md-end align-items-center">
+                    <button id="btn_ir_editar" class="btn btn-outline-primary px-4 shadow-sm" onclick="irAEditar()">
+                        <i class="bi bi-pencil-square"></i> Editar
                     </button>
 
-                    <div id="panel_acciones_gerencia" class="d-none d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
-                        <button id="btn_observar_gerencia" class="btn btn-outline-danger w-100 w-md-auto" onclick="rechazarDesdeModal()">
-                            <i class="bi bi-x-circle"></i> Observar / Devolver
+                    <div id="panel_acciones_gerencia" class="d-none d-flex flex-wrap gap-2 justify-content-center">
+                        <button id="btn_observar_gerencia" class="btn btn-warning text-dark px-4 shadow-sm" onclick="rechazarDesdeModal()">
+                            <i class="bi bi-x-circle"></i> Observar
                         </button>
-                        <button class="btn btn-success fw-bold px-4 shadow w-100 w-md-auto" onclick="aprobarDesdeModal()">
+                        <button class="btn btn-success fw-bold px-4 shadow" onclick="aprobarDesdeModal()">
                             <i class="bi bi-check-circle-fill"></i> APROBAR PEDIDO
                         </button>
                     </div>
@@ -1046,11 +1060,8 @@ document.addEventListener("DOMContentLoaded", function() {
         // === LÓGICA PARA PERMITIR ANULACIÓN ===
         // Bloqueamos la anulación si alguien más la está revisando o si ya terminó el flujo
         const estadosBloqueadosParaAnular = [
-            'Por Verificar', // En Almacén
-            'Revision Pre-Cliente', // En Gerencia
-            'Pendiente Aprobacion Final', // En Gerencia final
-            'Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', // Incidencias
-            'Por Despachar', 'Despachado', 'Entregado' // Flujo logístico cerrado
+        'Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', // Ya están en incidencias
+        'Por Despachar', 'Despachado', 'Entregado'
         ];
 
         // Si es MI cotización y NO está en un estado bloqueado, puedo anularla

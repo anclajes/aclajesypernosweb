@@ -3604,6 +3604,7 @@ def aprobar_pre_cliente(order_id):
     return {'status': 'success', 'msg': 'Se ha autorizado el envío al cliente.'}
 
 # --- RUTA PARA ANULAR COTIZACIÓN DESDE EL HISTORIAL ---
+# --- RUTA PARA ANULAR COTIZACIÓN ---
 @app.route('/api/anular_cotizacion/<int:order_id>', methods=['POST'])
 def anular_cotizacion(order_id):
     if 'user_id' not in session: return {'status': 'error', 'msg': 'No autorizado'}, 401
@@ -3617,27 +3618,23 @@ def anular_cotizacion(order_id):
     user_id = session.get('user_id')
     rol = session.get('role')
     
-    # Permisos: El creador de su propia cotización o Gerencia/Admin
     es_propietario = (orden.vendedor_id == user_id)
     es_gerencia = rol in ['admin', 'administracion']
     
     if not (es_propietario or es_gerencia):
         return {'status': 'error', 'msg': 'No tiene permisos para anular esta cotización.'}, 403
         
-    # Restricción: No se puede anular si está en pleno proceso de validación/revisión por otro
-    estados_bloqueados = ['Por Verificar', 'Revision Pre-Cliente', 'Pendiente Aprobacion Final']
-    if orden.estado in estados_bloqueados:
-        return {'status': 'error', 'msg': 'No se puede anular la cotización mientras se encuentra en proceso de validación o revisión.'}, 400
-        
-    if orden.estado in ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', 'Entregado']:
-        return {'status': 'error', 'msg': 'Esta cotización ya se encuentra en un estado final.'}, 400
+    # Única restricción: Que no esté ya en logística o ya anulado
+    estados_finalizados = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', 'Por Despachar', 'Despachado', 'Entregado']
+    if orden.estado in estados_finalizados:
+        return {'status': 'error', 'msg': 'No se puede anular un pedido que ya está en logística o finalizado.'}, 400
         
     orden.estado = 'Anulado'
     orden.motivo_anulacion = motivo
     orden.fecha_cancelacion = hora_peru()
     
     db.session.commit()
-    return {'status': 'success', 'msg': 'Cotización anulada correctamente y movida a Incidencias.'}
+    return {'status': 'success', 'msg': 'Cotización anulada correctamente.'}
 
 # =======================================================
 # MÓDULO DE ALMACÉN: PICKING LITE (SALIDAS)
