@@ -3877,28 +3877,6 @@ def procesar_devolucion(order_id):
         db.session.rollback()
         return {'status': 'error', 'msg': f'Error: {str(e)}'}
 
-@app.route('/api/anular_cotizacion/<int:order_id>', methods=['POST'])
-def anular_cotizacion(order_id):
-    if 'user_id' not in session: 
-        return {'status': 'error', 'msg': 'No autorizado'}, 401
-    
-    orden = Order.query.get_or_404(order_id)
-    
-    data = request.get_json(silent=True) or request.form
-    motivo = data.get('motivo') or data.get('detalle_cancelacion') or 'Anulado manualmente'
-
-    try:
-        orden.estado = 'Anulado'
-        orden.fecha_cancelacion = hora_peru()
-        orden.motivo_anulacion = motivo
-        orden.detalle_cancelacion = motivo
-        orden.usuario_cancela_id = session['user_id']
-        
-        db.session.commit()
-        return {'status': 'success', 'msg': 'Cotización anulada correctamente.'}
-    except Exception as e:
-        db.session.rollback()
-        return {'status': 'error', 'msg': str(e)}
 
 @app.route('/api/cancelar_despacho/<int:order_id>', methods=['POST'])
 def cancelar_despacho(order_id):
