@@ -4187,7 +4187,7 @@ function cargarProductos() {
 
 
 
-    function abrirDirectorioClientes() {
+function abrirDirectorioClientes() {
         const modal = new bootstrap.Modal(document.getElementById('modalDirectorio'));
         modal.show();
         
@@ -4204,15 +4204,6 @@ function cargarProductos() {
 
                 res.data.forEach(c => {
                     const nombreSafe = (c.nombre || '').replace(/'/g, "&#39;");
-                    const dirSafe = (c.direccion || '').replace(/'/g, "&#39;");
-                    const telSafe = (c.telefono || '').replace(/'/g, "&#39;");
-                    
-                    // CAPTURAMOS LOS NUEVOS CAMPOS DESDE LA BD
-                    const ubiSafe = (c.ubigeo || '').replace(/'/g, "&#39;");
-                    const depSafe = (c.departamento || '').replace(/'/g, "&#39;");
-                    const provSafe = (c.provincia || '').replace(/'/g, "&#39;");
-                    const distSafe = (c.distrito || '').replace(/'/g, "&#39;");
-                    
                     const fechaAudit = c.updated_at || '-';
                     const userAudit = c.updated_by || 'Sistema';
 
@@ -4230,9 +4221,9 @@ function cargarProductos() {
                             </td>
 
                             <td class="text-end">
-                                <!-- AQUI ENVIAMOS LOS 4 DATOS NUEVOS AL FINAL DEL ONCLICK -->
+                                <!-- AHORA SOLO ENVIAMOS EL RUC Y EL NOMBRE -->
                                 <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${dirSafe}', '${telSafe}', '${c.estado}', '${c.condicion}', '${fechaAudit}', '${userAudit}', '${ubiSafe}', '${depSafe}', '${provSafe}', '${distSafe}')">
+                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')">
                                     <i class="bi bi-check2-square"></i> Usar
                                 </button>
                             </td>
@@ -4306,8 +4297,15 @@ function toggleInmediata() {
 
 
 
-function seleccionarClienteDeDirectorio(ruc, nombre, dir, tel, estado, condicion, fecha, usuario, ubigeo, dep, prov, dist) {
-        // 1. Crear u obtener la opción en Select2
+function seleccionarClienteDeDirectorio(ruc, nombre) {
+        // 1. Ocultar el modal del directorio inmediatamente
+        const modalEl = document.getElementById('modalDirectorio');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if(modal) modal.hide();
+        }
+
+        // 2. Colocar el RUC y Nombre en el buscador principal (Select2)
         if ($('#cli_doc_select').find("option[value='" + ruc + "']").length) {
             $('#cli_doc_select').val(ruc).trigger('change');
         } else { 
@@ -4315,39 +4313,12 @@ function seleccionarClienteDeDirectorio(ruc, nombre, dir, tel, estado, condicion
             $('#cli_doc_select').append(newOption).trigger('change');
         }
 
-        // 2. Retardo de 50ms para evitar que Select2 sobreescriba los datos al disparar su evento 'change'
+        // 3. Ejecutar la búsqueda automáticamente (Simula darle clic a la Lupa)
+        // Esto obligará al sistema a traer TODOS los datos (incluyendo Ubigeo, Dep, Prov, Dist)
+        // Usamos un pequeño retardo de 100ms para asegurar que el Select2 ya tomó el valor
         setTimeout(() => {
-            // Llenar campos básicos
-            $('#cli_nom').val(nombre);
-            $('#cli_dir').val(dir);
-            $('#inputDireccionEntrega').val(dir);
-            $('#cli_tel').val(tel);
-            
-            // LLENAR NUEVOS CAMPOS (Validando que no se imprima "undefined" como texto)
-            $('#cli_ubigeo').val(ubigeo === 'undefined' ? '' : ubigeo);
-            $('#cli_departamento').val(dep === 'undefined' ? '' : dep);
-            $('#cli_provincia').val(prov === 'undefined' ? '' : prov);
-            $('#cli_distrito').val(dist === 'undefined' ? '' : dist);
-            
-            // Badges y Hiddens
-            if(typeof actualizarBadges === 'function') {
-                actualizarBadges(estado, condicion);
-            }
-            $('#hidden_estado').val(estado);
-            $('#hidden_condicion').val(condicion);
-            
-            // Mostrar Origen
-            let infoAudit = `Act: ${fecha} (${usuario})`;
-            $('#lbl_origen_datos').html(`<i class="bi bi-journal-bookmark-fill"></i> Directorio | <span class="text-primary">${infoAudit}</span>`);
-        }, 50);
-
-        // 3. Cerrar modal
-        const modalEl = document.getElementById('modalDirectorio');
-        if (modalEl) {
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            if(modal) modal.hide();
-        }
-    }
+            buscarClienteApi(false);
+        }, 100);
 
     // --- REDIRECCIÓN A SUNAT (VERSIÓN DEFINITIVA Y ESTABLE) ---
     window.abrirPortalSunat = function() {
