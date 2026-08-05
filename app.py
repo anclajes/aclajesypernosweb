@@ -265,6 +265,12 @@ def consulta_documento():
             'telefono': cliente_db.telefono,
             'estado': cliente_db.estado,
             'condicion': cliente_db.condicion,
+
+            # --- AQUÍ ESTABA EL PROBLEMA: Faltaba enviar los datos nuevos al HTML ---
+            'ubigeo': getattr(cliente_db, 'ubigeo', ''),
+            'distrito': getattr(cliente_db, 'distrito', ''),
+            'provincia': getattr(cliente_db, 'provincia', ''),
+            'departamento': getattr(cliente_db, 'departamento', ''),
             
             # DATOS DE AUDITORÍA
             'last_updated': cliente_db.last_updated.strftime('%d/%m %H:%M'),

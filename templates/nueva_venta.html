@@ -2632,91 +2632,55 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 
 
 
-    function buscarClienteApi(force = false) {
-
+function buscarClienteApi(force = false) {
         let numero = $('#cli_doc_select').val(); 
-
         if(!numero) return Swal.fire('Error', 'Escriba un número', 'warning');
-
         
-
         const btn = document.getElementById('btnBuscarSunat'); 
-
         const iconoOriginal = btn.innerHTML; 
-
         btn.disabled = true; 
-
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-
         
-
         let formData = new FormData(); 
-
         formData.append('numero', numero); 
-
         if(force) formData.append('force', 'true');
-
         
-
         fetch('/api/consulta_documento', { method: 'POST', body: formData })
-
         .then(r => r.json()).then(data => {
-
             btn.disabled = false; btn.innerHTML = iconoOriginal;
-
             
-
             if(data.status === 'success') {
                 $('#cli_nom').val(data.razon_social).prop('readonly', true); 
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
                 $('#inputDireccionEntrega').val(data.direccion || '');
                 if(data.telefono) $('#cli_tel').val(data.telefono);
                 
-                // NUEVOS CAMPOS DESDE SUNAT
+                // --- ASEGÚRATE DE TENER ESTAS 4 LÍNEAS AQUÍ ---
                 $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
                 $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
-                // -------------------------
-
+                // ----------------------------------------------
+                
                 $('#hidden_estado').val(data.estado);
-
                 $('#hidden_condicion').val(data.condicion);
-
-                actualizarBadges(data.estado, data.condicion); 
-
                 
-
-                // --- NUEVO: MOSTRAR QUIEN Y CUANDO ---
-
+                if(typeof actualizarBadges === 'function') {
+                    actualizarBadges(data.estado, data.condicion);
+                }
+                
                 let infoAudit = `Act: ${data.last_updated} (${data.updated_by})`;
-
                 let iconFuente = data.origen === 'BD' ? '<i class="bi bi-database"></i> BD Local' : '<i class="bi bi-cloud-download"></i> SUNAT';
-
-                
-
                 $('#lbl_origen_datos').html(`${iconFuente} | <span class="text-primary">${infoAudit}</span>`);
-
                 
-
             } else { 
-
-                // Si es error (ej. Candado de ahorro activo), lo mostramos bonito
-
                 Swal.fire('Aviso', data.msg, 'warning'); 
-
             }
-
         }).catch(err => { 
-
             console.error(err); 
-
             btn.disabled = false; btn.innerHTML = iconoOriginal; 
-
             Swal.fire('Error', 'Fallo de conexión', 'error'); 
-
         });
-
     }
 
 
