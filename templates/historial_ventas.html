@@ -244,6 +244,11 @@
                                 <button class="btn btn-light border shadow-sm" onclick="verDetalleCompleto('{{o.id}}')" title="Ver Detalle">
                                     <i class="bi bi-eye-fill text-primary"></i>
                                 </button>
+                                {% if o.archivo_oc %}
+                                    <a href="/ver_oc/{{ o.id }}" class="btn btn-light border text-success shadow-sm" title="Descargar Orden de Compra" target="_blank">
+                                        <i class="bi bi-file-earmark-arrow-down-fill"></i>
+                                    </a>
+                                {% endif %}
                                 <a href="/descargar_cotizacion_v2/{{ o.id }}" class="btn btn-light border text-danger shadow-sm" title="Descargar PDF" target="_blank">
                                     <i class="bi bi-file-pdf-fill"></i>
                                 </a>
@@ -1157,103 +1162,107 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // === NUEVA FUNCIÓN MEJORADA PARA ANULAR CON MOTIVOS (TODO EN UNA VENTANA) ===
+// === NUEVA FUNCIÓN MEJORADA PARA ANULAR CON MOTIVOS ===
     function iniciarAnulacion() {
         if(!ordenIdActual) return;
 
-        Swal.fire({
-            title: '¿Anular esta Cotización?',
-            html: `
-                <div class="alert alert-warning text-start small mb-3 shadow-sm border-warning" style="font-size: 0.85rem;">
-                    <i class="bi bi-info-circle-fill"></i> <b>Aviso Importante:</b><br>
-                    Al anular, esta cotización se moverá permanentemente a la pestaña <b>Incidencias</b>. Podrás consultarla cuando quieras, pero quedará bloqueada y ya no podrás editarla.
-                </div>
-                
-                <div class="form-group text-start px-1">
-                    <label class="fw-bold small mb-1 text-secondary">Seleccione un motivo:</label>
-                    <select id="swal-select-motivo" class="form-select shadow-sm mb-3">
-                        <option value="" disabled selected>Seleccione un motivo...</option>
-                        <option value="El Cliente desistió / No aceptó">El Cliente desistió / No aceptó</option>
-                        <option value="Error de tipeo o cálculo de precios">Error de tipeo o cálculo de precios</option>
-                        <option value="Producto sin stock (Falta definitiva)">Producto sin stock (Falta definitiva)</option>
-                        <option value="Se reemplazará por una cotización nueva">Se reemplazará por una cotización nueva</option>
-                        <option value="OTRO">Otro motivo (Especificar)...</option>
-                    </select>
-                    
-                    <!-- Este recuadro está oculto inicialmente (d-none) -->
-                    <div id="swal-motivo-otro-container" class="d-none">
-                        <label class="fw-bold small mb-1 text-danger">Especifique el motivo:</label>
-                        <textarea id="swal-textarea-otro" class="form-control border-danger shadow-sm" rows="3" placeholder="Ej: El cliente pidió cambiar el RUC a última hora..."></textarea>
+        // 1. SOLUCIÓN: Ocultamos el modal de Bootstrap ANTES de abrir SweetAlert
+        // para que no bloquee la escritura en el campo de texto.
+        const modalEl = document.getElementById('modalDetalleCompleto');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if(modal) modal.hide();
+        }
+
+        // 2. Pequeño retardo para que Bootstrap termine de cerrar y libere el cursor
+        setTimeout(() => {
+            Swal.fire({
+                title: '¿Anular esta Cotización?',
+                html: `
+                    <div class="alert alert-warning text-start small mb-3 shadow-sm border-warning" style="font-size: 0.85rem;">
+                        <i class="bi bi-info-circle-fill"></i> <b>Aviso Importante:</b><br>
+                        Al anular, esta cotización se moverá permanentemente a la pestaña <b>Incidencias</b>. Podrás consultarla cuando quieras, pero quedará bloqueada y ya no podrás editarla.
                     </div>
-                </div>
-            `,
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#dc3545',
-            cancelButtonColor: '#6c757d',
-            confirmButtonText: '<i class="bi bi-trash3-fill"></i> Confirmar Anulación',
-            cancelButtonText: 'Cancelar',
-            
-            // Esta función "didOpen" escucha cuando cambias la selección
-            didOpen: () => {
-                const selectElement = document.getElementById('swal-select-motivo');
-                const otroContainer = document.getElementById('swal-motivo-otro-container');
-                const textareaElement = document.getElementById('swal-textarea-otro');
+                    
+                    <div class="form-group text-start px-1">
+                        <label class="fw-bold small mb-1 text-secondary">Seleccione un motivo:</label>
+                        <select id="swal-select-motivo" class="form-select shadow-sm mb-3">
+                            <option value="" disabled selected>Seleccione un motivo...</option>
+                            <option value="El Cliente desistió / No aceptó">El Cliente desistió / No aceptó</option>
+                            <option value="Error de tipeo o cálculo de precios">Error de tipeo o cálculo de precios</option>
+                            <option value="Producto sin stock (Falta definitiva)">Producto sin stock (Falta definitiva)</option>
+                            <option value="Se reemplazará por una cotización nueva">Se reemplazará por una cotización nueva</option>
+                            <option value="OTRO">Otro motivo (Especificar)...</option>
+                        </select>
+                        
+                        <div id="swal-motivo-otro-container" class="d-none">
+                            <label class="fw-bold small mb-1 text-danger">Especifique el motivo:</label>
+                            <textarea id="swal-textarea-otro" class="form-control border-danger shadow-sm" rows="3" placeholder="Ej: El cliente pidió cambiar el RUC a última hora..."></textarea>
+                        </div>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '<i class="bi bi-trash3-fill"></i> Confirmar Anulación',
+                cancelButtonText: 'Cancelar',
                 
-                selectElement.addEventListener('change', (e) => {
-                    if (e.target.value === 'OTRO') {
-                        otroContainer.classList.remove('d-none'); // Muestra el textarea
-                        textareaElement.focus(); // Pone el cursor directo para escribir
-                    } else {
-                        otroContainer.classList.add('d-none'); // Lo oculta si elige otra cosa
-                        textareaElement.value = ''; // Limpia lo escrito por si acaso
+                didOpen: () => {
+                    const selectElement = document.getElementById('swal-select-motivo');
+                    const otroContainer = document.getElementById('swal-motivo-otro-container');
+                    const textareaElement = document.getElementById('swal-textarea-otro');
+                    
+                    selectElement.addEventListener('change', (e) => {
+                        if (e.target.value === 'OTRO') {
+                            otroContainer.classList.remove('d-none'); 
+                            textareaElement.focus(); 
+                        } else {
+                            otroContainer.classList.add('d-none'); 
+                            textareaElement.value = ''; 
+                        }
+                    });
+                },
+                
+                preConfirm: () => {
+                    const selectValue = document.getElementById('swal-select-motivo').value;
+                    const textareaValue = document.getElementById('swal-textarea-otro').value.trim();
+
+                    if (!selectValue) {
+                        Swal.showValidationMessage('Debes seleccionar un motivo de la lista.');
+                        return false;
                     }
-                });
-            },
-            
-            // Aquí validamos antes de enviar
-            preConfirm: () => {
-                const selectValue = document.getElementById('swal-select-motivo').value;
-                const textareaValue = document.getElementById('swal-textarea-otro').value.trim();
-
-                if (!selectValue) {
-                    Swal.showValidationMessage('Debes seleccionar un motivo de la lista.');
-                    return false;
-                }
-                
-                if (selectValue === 'OTRO' && !textareaValue) {
-                    Swal.showValidationMessage('Debes escribir el motivo específico en el recuadro rojo.');
-                    return false;
-                }
-
-                // Devuelve el texto escrito si eligió "OTRO", o el valor del select si eligió una opción rápida
-                return selectValue === 'OTRO' ? textareaValue : selectValue;
-            }
-        }).then((result) => {
-            if (result.isConfirmed) {
-                const motivoFinal = result.value; // Lo que validamos en preConfirm
-                
-                // Ocultamos el modal de detalles por debajo
-                bootstrap.Modal.getInstance(document.getElementById('modalDetalleCompleto')).hide();
-                Swal.fire({ title: 'Anulando Cotización...', didOpen: () => Swal.showLoading() });
-
-                // Hacemos la petición al servidor
-                fetch(`/api/anular_cotizacion/${ordenIdActual}`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ motivo: motivoFinal })
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if(data.status === 'success') {
-                        Swal.fire('¡Anulada!', data.msg, 'success').then(() => location.reload());
-                    } else {
-                        Swal.fire('Error', data.msg, 'error');
+                    
+                    if (selectValue === 'OTRO' && !textareaValue) {
+                        Swal.showValidationMessage('Debes escribir el motivo específico en el recuadro rojo.');
+                        return false;
                     }
-                })
-                .catch(() => Swal.fire('Error', 'Fallo de conexión con el servidor.', 'error'));
-            }
-        });
+
+                    return selectValue === 'OTRO' ? textareaValue : selectValue;
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const motivoFinal = result.value; 
+                    
+                    Swal.fire({ title: 'Anulando Cotización...', didOpen: () => Swal.showLoading() });
+
+                    fetch(`/api/anular_cotizacion/${ordenIdActual}`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ motivo: motivoFinal })
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if(data.status === 'success') {
+                            Swal.fire('¡Anulada!', data.msg, 'success').then(() => location.reload());
+                        } else {
+                            Swal.fire('Error', data.msg, 'error');
+                        }
+                    })
+                    .catch(() => Swal.fire('Error', 'Fallo de conexión con el servidor.', 'error'));
+                }
+            });
+        }, 150); // Le damos 150 milisegundos a Bootstrap para que cierre
     }
 
     function anularCotizacionActual(id) {
