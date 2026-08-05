@@ -146,6 +146,24 @@
                         <label class="small text-muted mb-1 fw-bold">Dirección Fiscal (SUNAT)</label>
                         <input type="text" id="cli_dir" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
                     </div>
+                    <!-- NUEVOS CAMPOS DE UBICACIÓN (GRID) -->
+                    <div class="col-4 col-sm-3">
+                        <label class="small text-muted mb-1 fw-bold">Ubigeo</label>
+                        <input type="text" id="cli_ubigeo" class="form-control form-control-sm bg-white shadow-sm border-0 text-center" readonly>
+                    </div>
+                    <div class="col-8 col-sm-3">
+                        <label class="small text-muted mb-1 fw-bold">Departamento</label>
+                        <input type="text" id="cli_departamento" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="small text-muted mb-1 fw-bold">Provincia</label>
+                        <input type="text" id="cli_provincia" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
+                    </div>
+                    <div class="col-6 col-sm-3">
+                        <label class="small text-muted mb-1 fw-bold">Distrito</label>
+                        <input type="text" id="cli_distrito" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
+                    </div>
+
                     <div class="col-12 col-sm-6">
                         <label class="small text-muted mb-1 fw-bold">Teléfono (Editable)</label>
                         <input type="text" id="cli_tel" class="form-control form-control-sm border-success shadow-sm" placeholder="Ingrese teléfono...">
@@ -1007,7 +1025,11 @@ window.aplicarDescuentoItem = function(index) {
         const datosCliente = {
             ruc: "{{ orden.cliente.documento }}",
             nombre: "{{ orden.cliente.nombre }}",
-            dir: "{{ orden.direccion_envio or orden.cliente.direccion }}", 
+            dir: "{{ orden.direccion_envio or orden.cliente.direccion }}",
+            ubigeo: "{{ orden.cliente.ubigeo or '' }}",
+            departamento: "{{ orden.cliente.departamento or '' }}",
+            provincia: "{{ orden.cliente.provincia or '' }}",
+            distrito: "{{ orden.cliente.distrito or '' }}",
             tel: "{{ orden.cliente.telefono or '' }}",
             atte: "{{ orden.atencion or '' }}",
             oc: "{{ orden.orden_compra or '' }}",
@@ -1036,7 +1058,11 @@ window.aplicarDescuentoItem = function(index) {
         $('#cli_doc_select').append(newOption).trigger('change');
         
         $('#cli_nom').val(datosCliente.nombre);
-        $('#cli_dir').val(datosCliente.dir); 
+        $('#cli_dir').val(datosCliente.dir);
+        $('#cli_ubigeo').val(datosCliente.ubigeo);
+        $('#cli_departamento').val(datosCliente.departamento);
+        $('#cli_provincia').val(datosCliente.provincia);
+        $('#cli_distrito').val(datosCliente.distrito);
         $('#cli_tel').val(datosCliente.tel);
         $('#cli_atte').val(datosCliente.atte);
         $('#cli_oc').val(datosCliente.oc);
@@ -2486,42 +2512,28 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         $('#cli_doc_select').select2({
 
             placeholder: "Escriba RUC o Nombre...", allowClear: true, width: '100%', tags: true, 
-
             createTag: function (params) { return $.trim(params.term) === '' ? null : { id: params.term, text: params.term, newOption: true } },
-
             ajax: { url: '/api/buscar_clientes_db', dataType: 'json', delay: 250, data: function (params) { return { q: params.term }; }, processResults: function (data) { return { results: data.results }; }, cache: true },
-
             minimumInputLength: 0
 
         });
 
         $('#cli_doc_select').on('select2:select', function (e) {
-
             var data = e.params.data;
-
             if (data.nombre) {
-
                 $('#cli_nom').val(data.nombre).prop('readonly', true);
-
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
-
-                
-
                 // LÓGICA DE COPIADO DE DIRECCIÓN PARA ENVÍO
-
                 $('#inputDireccionEntrega').val(data.direccion || '');
-
-
-
                 $('#cli_tel').val(data.telefono || '');
-
+                // NUEVOS CAMPOS DESDE BASE DE DATOS
+                $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
+                $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
+                $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
+                $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
                 // GUARDAR EN HIDDENS PARA EL BOTÓN VER FICHA
-
                 $('#hidden_estado').val(data.estado);
-
                 $('#hidden_condicion').val(data.condicion);
-
-                
 
                 if(typeof actualizarBadges === 'function') actualizarBadges(data.estado, data.condicion);
 
@@ -2532,17 +2544,16 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_nom').val("").prop('readonly', true); $('#cli_dir').val("").prop('readonly', true); $('#cli_tel').val(""); $('#lbl_origen_datos').html(`<i class="bi bi-pencil"></i> RUC Nuevo`);
 
                 $('#inputDireccionEntrega').val("");
-
+                // LIMPIAR CAMPOS SI ES NUEVO
+                $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
             }
-
         });
 
         $('#cli_doc_select').on('select2:clear', function (e) { 
-
             $('#cli_nom').val(""); $('#cli_dir').val(""); $('#cli_tel').val(""); $('#lbl_origen_datos').html(""); 
-
             $('#inputDireccionEntrega').val("");
-
+            // LIMPIAR CAMPOS AL BORRAR
+            $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
         });
 
         
@@ -2656,16 +2667,17 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
             
 
             if(data.status === 'success') {
-
                 $('#cli_nom').val(data.razon_social).prop('readonly', true); 
-
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
-
                 $('#inputDireccionEntrega').val(data.direccion || '');
-
                 if(data.telefono) $('#cli_tel').val(data.telefono);
-
                 
+                // NUEVOS CAMPOS DESDE SUNAT
+                $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
+                $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
+                $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
+                $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+                // -------------------------
 
                 $('#hidden_estado').val(data.estado);
 
@@ -4047,6 +4059,12 @@ function recalcularCarritoPorMoneda() {
             cliente_nombre: $('#cli_nom').val(), 
             cliente_tel: $('#cli_tel').val(), 
             cliente_dir: $('#cli_dir').val(),
+            // NUEVOS CAMPOS AL GUARDAR
+            cliente_ubigeo: $('#cli_ubigeo').val(),
+            cliente_departamento: $('#cli_departamento').val(),
+            cliente_provincia: $('#cli_provincia').val(),
+            cliente_distrito: $('#cli_distrito').val(),
+            // ------------------------
             cliente_atte: $('#cli_atte').val(), 
             orden_compra: $('#cli_oc').val(),
             
@@ -4200,65 +4218,42 @@ function cargarProductos() {
 
 
                 res.data.forEach(c => {
-
                     const nombreSafe = c.nombre.replace(/'/g, "&#39;");
-
                     const dirSafe = c.direccion.replace(/'/g, "&#39;");
-
                     const telSafe = c.telefono.replace(/'/g, "&#39;");
-
-                    // Preparamos datos de auditoría seguros
-
+                    
+                    // NUEVAS VARIABLES SEGURAS
+                    const ubiSafe = (c.ubigeo || '').replace(/'/g, "&#39;");
+                    const depSafe = (c.departamento || '').replace(/'/g, "&#39;");
+                    const provSafe = (c.provincia || '').replace(/'/g, "&#39;");
+                    const distSafe = (c.distrito || '').replace(/'/g, "&#39;");
+                    // ------------------------
+                    
                     const fechaAudit = c.updated_at || '-';
-
                     const userAudit = c.updated_by || 'Sistema';
 
-
-
                     const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
-
                     
-
                     const fila = `
-
                         <tr>
-
                             <td class="fw-bold text-primary small">${c.documento}</td>
-
                             <td class="small text-truncate" style="max-width: 250px;">${c.nombre}</td>
-
                             <td class="d-none d-md-table-cell">${badgeEst}</td>
-
                             
-
                             <td class="small text-muted" style="font-size: 0.75rem;">
-
                                 ${fechaAudit}<br>
-
                                 <span class="fst-italic">Por: ${userAudit}</span>
-
                             </td>
-
-
 
                             <td class="text-end">
-
                                 <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-
-                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${dirSafe}', '${telSafe}', '${c.estado}', '${c.condicion}', '${fechaAudit}', '${userAudit}')">
-
+                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${dirSafe}', '${telSafe}', '${c.estado}', '${c.condicion}', '${fechaAudit}', '${userAudit}', '${ubiSafe}', '${depSafe}', '${provSafe}', '${distSafe}')">
                                     <i class="bi bi-check2-square"></i> Usar
-
                                 </button>
-
                             </td>
-
                         </tr>
-
                     `;
-
                     tbody.insertAdjacentHTML('beforeend', fila);
-
                 });
 
             })
@@ -4329,62 +4324,41 @@ function toggleInmediata() {
 
 
 
-    function seleccionarClienteDeDirectorio(ruc, nombre, dir, tel, estado, condicion, fecha, usuario) {
-
+    function seleccionarClienteDeDirectorio(ruc, nombre, dir, tel, estado, condicion, fecha, usuario, ubigeo, dep, prov, dist) {
         // 1. Crear opción en Select2
-
         if ($('#cli_doc_select').find("option[value='" + ruc + "']").length) {
-
             $('#cli_doc_select').val(ruc).trigger('change');
-
         } else { 
-
             var newOption = new Option(ruc + " - " + nombre, ruc, true, true);
-
             $('#cli_doc_select').append(newOption).trigger('change');
-
         }
 
-
-
         // 2. Llenar campos
-
         $('#cli_nom').val(nombre);
-
         $('#cli_dir').val(dir);
-
         $('#inputDireccionEntrega').val(dir);
-
         $('#cli_tel').val(tel);
-
         
-
+        // LLENAR NUEVOS CAMPOS
+        $('#cli_ubigeo').val(ubigeo);
+        $('#cli_departamento').val(dep);
+        $('#cli_provincia').val(prov);
+        $('#cli_distrito').val(dist);
+        // ------------------
+        
         // 3. Badges y Hiddens
-
         actualizarBadges(estado, condicion);
-
         $('#hidden_estado').val(estado);
-
         $('#hidden_condicion').val(condicion);
-
         
-
-        // 4. CORRECCIÓN: MOSTRAR INFO REAL EN LUGAR DE SOLO "DIRECTORIO"
-
+        // 4. Mostrar Origen
         let infoAudit = `Act: ${fecha} (${usuario})`;
-
         $('#lbl_origen_datos').html(`<i class="bi bi-journal-bookmark-fill"></i> Directorio | <span class="text-primary">${infoAudit}</span>`);
 
-
-
         // 5. Cerrar modal
-
         const modalEl = document.getElementById('modalDirectorio');
-
         const modal = bootstrap.Modal.getInstance(modalEl);
-
         modal.hide();
-
     }
 
     // --- REDIRECCIÓN A SUNAT (VERSIÓN DEFINITIVA Y ESTABLE) ---

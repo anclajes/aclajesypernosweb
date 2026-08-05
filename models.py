@@ -72,7 +72,14 @@ class Client(db.Model):
     telefono = db.Column(db.String(20))
     direccion = db.Column(db.String(200))
     estado = db.Column(db.String(50), default='ACTIVO')      
-    condicion = db.Column(db.String(50), default='HABIDO')   
+    condicion = db.Column(db.String(50), default='HABIDO')
+
+# ---> NUEVOS CAMPOS GEOGRÁFICOS <---
+    ubigeo = db.Column(db.String(10), nullable=True)
+    distrito = db.Column(db.String(100), nullable=True)
+    provincia = db.Column(db.String(100), nullable=True)
+    departamento = db.Column(db.String(100), nullable=True)
+
     last_updated = db.Column(db.DateTime, default=hora_peru)
     updated_by = db.Column(db.String(50), default='Sistema')
 

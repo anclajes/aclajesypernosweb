@@ -273,13 +273,7 @@ def consulta_documento():
 
     # CASO B: Consultar API (Costo)
     print(f">>> [API] Consultando datos externos para {numero}...")
-    TOKEN = os.getenv('SUNAT_API_KEY')
-    # CASO B: Consultar API (Costo)
-    print(f">>> [API] Consultando datos externos para {numero}...")
-    
-    # --- CAMBIO AQUÍ PARA USO LOCAL ---
-    TOKEN = "sk_12670.mczJWCBkAFXbV3pYZdD6EoxkwZ7SZSME"
-    # ----------------------------------
+    TOKEN = "sk_12670.mczJWCBkAFXbV3pYZdD6EoxkwZ7SZSME" # Tu Token
     
     URL_RUC = "https://api.decolecta.com/v1/sunat/ruc"
     URL_DNI = "https://api.decolecta.com/v1/reniec/dni"
@@ -298,16 +292,20 @@ def consulta_documento():
             direccion = ""
             estado = "ACTIVO"
             condicion = "HABIDO"
+            
+            # --- NUEVAS VARIABLES ---
+            ubigeo = data.get('ubigeo', '')
+            distrito = data.get('distrito', '')
+            provincia = data.get('provincia', '')
+            departamento = data.get('departamento', '')
 
             if len(numero) == 8: # DNI
                 if 'nombres' in data:
                     raw_name = f"{data.get('nombres')} {data.get('apellidoPaterno')} {data.get('apellidoMaterno')}"
-                    razon = html.unescape(raw_name) # Limpieza DNI
+                    razon = html.unescape(raw_name) 
                     direccion = "-" 
             else: # RUC
-                # Obtenemos dato crudo
                 raw_razon = data.get('razon_social') or data.get('razonSocial') or data.get('nombre') or ''
-                # LIMPIEZA AQUÍ (Esto arregla el &amp;)
                 razon = html.unescape(raw_razon)
                 
                 raw_dir = data.get('direccion', '')
@@ -321,6 +319,7 @@ def consulta_documento():
                 cliente_db = Client(
                     documento=numero, nombre=razon, direccion=direccion,
                     estado=estado, condicion=condicion,
+                    ubigeo=ubigeo, distrito=distrito, provincia=provincia, departamento=departamento, # <-- AGREGADO
                     last_updated=hora_peru(),
                     updated_by=usuario_actual
                 )
@@ -330,6 +329,12 @@ def consulta_documento():
                 cliente_db.direccion = direccion
                 cliente_db.estado = estado
                 cliente_db.condicion = condicion
+                # <-- AGREGADO
+                cliente_db.ubigeo = ubigeo 
+                cliente_db.distrito = distrito
+                cliente_db.provincia = provincia
+                cliente_db.departamento = departamento
+                
                 cliente_db.last_updated = hora_peru()
                 cliente_db.updated_by = usuario_actual
             
@@ -342,6 +347,12 @@ def consulta_documento():
                 'direccion': direccion,
                 'estado': estado,
                 'condicion': condicion,
+                # <-- AGREGADO AL JSON DE RESPUESTA PARA EL FRONTEND
+                'ubigeo': ubigeo,
+                'distrito': distrito,
+                'provincia': provincia,
+                'departamento': departamento,
+                
                 'last_updated': hora_peru().strftime('%d/%m %H:%M'),
                 'updated_by': usuario_actual
             }
@@ -867,8 +878,7 @@ def get_next_sku(category_id):
     sku_sugerido = f"{cat.prefijo}-{str(siguiente_num).zfill(3)}"
     return {'sku': sku_sugerido, 'prefijo': cat.prefijo}
 
-# --- 1. API PARA BUSCAR CLIENTE (NUEVO) ---
-# Pégalo junto a las otras rutas de API
+# --- API PARA BUSCAR CLIENTE DIRECTO (POR DOCUMENTO) ---
 @app.route('/api/cliente/<documento>')
 def buscar_cliente(documento):
     cliente = Client.query.filter_by(documento=documento).first()
@@ -877,7 +887,12 @@ def buscar_cliente(documento):
             'encontrado': True,
             'nombre': cliente.nombre,
             'telefono': cliente.telefono,
-            'direccion': cliente.direccion
+            'direccion': cliente.direccion,
+            # <-- AGREGADOS
+            'ubigeo': cliente.ubigeo,
+            'distrito': cliente.distrito,
+            'provincia': cliente.provincia,
+            'departamento': cliente.departamento
         }
     return {'encontrado': False}
 
@@ -1098,6 +1113,11 @@ def nueva_venta():
                     nombre=data.get('cliente_nombre'),
                     telefono=data.get('cliente_tel'),
                     direccion=data.get('cliente_dir'),
+                    # <-- RECOLECTAR NUEVOS CAMPOS SI EL FRONTEND LOS ENVÍA
+                    ubigeo=data.get('cliente_ubigeo'),
+                    distrito=data.get('cliente_distrito'),
+                    provincia=data.get('cliente_provincia'),
+                    departamento=data.get('cliente_departamento'),
                     estado='ACTIVO', condicion='HABIDO', last_updated=hora_peru()
                 )
                 db.session.add(cliente)
@@ -1106,6 +1126,12 @@ def nueva_venta():
                 cliente.nombre = data.get('cliente_nombre')
                 cliente.direccion = data.get('cliente_dir')
                 cliente.telefono = data.get('cliente_tel')
+                
+                # <-- ACTUALIZAR NUEVOS CAMPOS SOLO SI VIENEN DATOS VÁLIDOS
+                if data.get('cliente_ubigeo'): cliente.ubigeo = data.get('cliente_ubigeo')
+                if data.get('cliente_distrito'): cliente.distrito = data.get('cliente_distrito')
+                if data.get('cliente_provincia'): cliente.provincia = data.get('cliente_provincia')
+                if data.get('cliente_departamento'): cliente.departamento = data.get('cliente_departamento')
             
             db.session.flush() # Para asegurar que tenemos el ID del cliente
 
@@ -2977,14 +3003,19 @@ def buscar_clientes_db():
     resultados = []
     for c in clientes:
         resultados.append({
-            'id': c.documento, # Usamos el RUC como ID
-            'text': f"{c.documento} - {c.nombre}", # Lo que se ve en la lista
-            # Datos extra para llenar el formulario:
+            'id': c.documento,
+            'text': f"{c.documento} - {c.nombre}",
             'nombre': c.nombre,
             'direccion': c.direccion,
             'telefono': c.telefono,
             'estado': c.estado,
             'condicion': c.condicion,
+            # <-- AGREGADOS
+            'ubigeo': c.ubigeo,
+            'distrito': c.distrito,
+            'provincia': c.provincia,
+            'departamento': c.departamento,
+            
             'updated': c.last_updated.strftime('%d/%m/%Y')
         })
         
@@ -4594,6 +4625,30 @@ def fix_render_db():
         return "<h2>✅ Base de datos en Render actualizada. Solo se agregaron los últimos campos faltantes.</h2>"
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
+
+@app.route('/fix_cliente_ubigeo')
+def fix_cliente_ubigeo():
+    try:
+        from sqlalchemy import text
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            
+            try: conn.execute(text('ALTER TABLE client ADD COLUMN ubigeo VARCHAR(10)'))
+            except Exception as e: print(f"Aviso ubigeo: {e}")
+                
+            try: conn.execute(text('ALTER TABLE client ADD COLUMN distrito VARCHAR(100)'))
+            except Exception as e: print(f"Aviso distrito: {e}")
+                
+            try: conn.execute(text('ALTER TABLE client ADD COLUMN provincia VARCHAR(100)'))
+            except Exception as e: print(f"Aviso provincia: {e}")
+                
+            try: conn.execute(text('ALTER TABLE client ADD COLUMN departamento VARCHAR(100)'))
+            except Exception as e: print(f"Aviso departamento: {e}")
+
+        return "<h2>✅ Base de datos de clientes actualizada correctamente (Ubigeo, Distrito, Provincia, Departamento).</h2>"
+    except Exception as e:
+        return f"<h2>❌ Error general: {str(e)}</h2>"
+
+    
 # --- ARRANQUE DE LA APLICACIÓN ---
 if __name__ == '__main__':
     # host='0.0.0.0' permite que otras PCs/celulares en la red te vean
