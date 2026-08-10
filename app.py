@@ -3713,7 +3713,13 @@ def picking_almacen():
             o.calc_fecha_maxima = None
         
         if o.calc_fecha_maxima:
-            o.dias_restantes = (o.calc_fecha_maxima.date() - hoy).days
+            # Si tiene hora (datetime), lo pasamos a solo fecha (date). Si ya es date puro, lo usamos directo.
+            if hasattr(o.calc_fecha_maxima, 'date'):
+                fecha_pura = o.calc_fecha_maxima.date()
+            else:
+                fecha_pura = o.calc_fecha_maxima
+                
+            o.dias_restantes = (fecha_pura - hoy).days
         else:
             o.dias_restantes = 9999
             
