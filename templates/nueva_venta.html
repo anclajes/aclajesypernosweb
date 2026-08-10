@@ -201,30 +201,43 @@
             <div class="card-body py-2">
                 <div class="row g-2 align-items-start">
                     
-                    <!-- TIEMPO DE ENTREGA -->
+                    <!-- TIEMPO DE ENTREGA (ACTUALIZADO) -->
                     <div class="col-12 col-sm-6">
-                        <div class="d-flex justify-content-between align-items-end mb-1">
-                            <label class="small fw-bold text-muted mb-0">Tiempo de Entrega</label>
-                            
-                            <!-- Checkbox de Entrega Inmediata -->
-                            <div class="form-check form-switch m-0 d-flex align-items-center">
-                                <input class="form-check-input mt-0 me-2" type="checkbox" id="chkInmediata" onchange="toggleInmediata()" style="cursor:pointer">
-                                <label class="form-check-label small fw-bold text-success" for="chkInmediata" style="cursor:pointer; font-size:0.7rem">Inmediata (Hoy)</label>
-                            </div>
-                        </div>
+                        <label class="small fw-bold text-muted mb-1">Tiempo de Entrega</label>
                         
-                        <!-- Agregamos flex-nowrap para que no se apachurre -->
-                        <div class="input-group input-group-sm shadow-sm flex-nowrap">
-                            <span class="input-group-text bg-white border-warning"><i class="bi bi-calendar-day text-warning"></i></span>
-                            
-                            <!-- type="text" pero con teclado numérico. El oninput elimina cualquier signo raro inmediatamente -->
-                            <input type="text" inputmode="numeric" id="inputDiasHabiles" class="form-control border-warning text-center fw-bold" 
-                                oninput="if(this.value !== 'HOY') this.value = this.value.replace(/[^0-9]/g, '');" 
-                                placeholder="Ej: 15" style="min-width: 70px;">
-                                
-                            <span class="input-group-text bg-white text-muted border-warning fw-bold">Días Hábiles</span>
+                        <!-- SELECTOR DE MODO -->
+                        <select id="selectTipoPlazo" class="form-select form-select-sm mb-2 shadow-sm fw-bold border-secondary text-secondary" onchange="cambiarTipoPlazo()">
+                            <option value="habiles">Días Hábiles (Calculado desde OC)</option>
+                            <option value="fija">Fecha Fija Exacta (Calendario)</option>
+                        </select>
+
+                        <!-- MODO 1: DÍAS HÁBILES (Por defecto) -->
+                        <div id="bloqueDiasHabiles">
+                            <div class="d-flex justify-content-between align-items-end mb-1">
+                                <!-- Checkbox de Entrega Inmediata -->
+                                <div class="form-check form-switch m-0 d-flex align-items-center">
+                                    <input class="form-check-input mt-0 me-2" type="checkbox" id="chkInmediata" onchange="toggleInmediata()" style="cursor:pointer">
+                                    <label class="form-check-label small fw-bold text-success" for="chkInmediata" style="cursor:pointer; font-size:0.7rem">Inmediata (Hoy)</label>
+                                </div>
+                            </div>
+                            <div class="input-group input-group-sm shadow-sm flex-nowrap">
+                                <span class="input-group-text bg-white border-warning"><i class="bi bi-calendar-day text-warning"></i></span>
+                                <input type="text" inputmode="numeric" id="inputDiasHabiles" class="form-control border-warning text-center fw-bold" 
+                                    oninput="if(this.value !== 'HOY') this.value = this.value.replace(/[^0-9]/g, '');" 
+                                    placeholder="Ej: 15" style="min-width: 70px;">
+                                <span class="input-group-text bg-white text-muted border-warning fw-bold">Días Hábiles</span>
+                            </div>
+                            <div class="form-text fst-italic text-muted" style="font-size: 0.7rem;">Vacío = <strong>"A COORDINAR"</strong>.</div>
                         </div>
-                        <div class="form-text fst-italic text-muted" style="font-size: 0.7rem;">Vacío = <strong>"A COORDINAR"</strong>.</div>
+
+                        <!-- MODO 2: FECHA FIJA (Oculto al inicio) -->
+                        <div id="bloqueFechaFija" class="d-none">
+                            <div class="input-group input-group-sm shadow-sm flex-nowrap mt-3">
+                                <span class="input-group-text bg-white border-primary"><i class="bi bi-calendar-event-fill text-primary"></i></span>
+                                <input type="date" id="inputFechaEntrega" class="form-control border-primary text-center fw-bold text-dark">
+                            </div>
+                            <div class="form-text fst-italic text-muted" style="font-size: 0.7rem;">Esta fecha <strong>NO</strong> se recalculará automáticamente.</div>
+                        </div>
                     </div>
 
                     <!-- TIPO DE ENTREGA -->
@@ -1035,10 +1048,10 @@ window.aplicarDescuentoItem = function(index) {
             oc: "{{ orden.orden_compra or '' }}",
             tipo_entrega: "{{ orden.tipo_entrega }}",
 
-                // --- NUEVO: RECUPERAR DÍAS HÁBILES ---
+            // --- RECUPERAR DÍAS HÁBILES Y FECHA ---
             dias_habiles: "{% if orden.dias_habiles_entrega is not none %}{{ orden.dias_habiles_entrega }}{% endif %}",
-
             fecha: "{{ orden.fecha_entrega.strftime('%Y-%m-%d') if orden.fecha_entrega else '' }}",
+            
             condicion: "{{ orden.condicion_pago }}",
             validez: "{{ orden.validez_oferta }}",
             obs: `{{ orden.observacion or '' }}`,
@@ -1067,17 +1080,36 @@ window.aplicarDescuentoItem = function(index) {
         $('#cli_atte').val(datosCliente.atte);
         $('#cli_oc').val(datosCliente.oc);
 
-        // Llenar logística
-        if (datosCliente.dias_habiles === '0' || datosCliente.dias_habiles === 0 || String(datosCliente.dias_habiles).toUpperCase() === 'HOY') {
-            $('#chkInmediata').prop('checked', true);
-            toggleInmediata(); // Esto lo pintará de verde y le pondrá "HOY"
-        } else {
-            $('#inputDiasHabiles').val(datosCliente.dias_habiles);
+        // ==========================================
+        // --- NUEVA LÓGICA: LLENAR LOGÍSTICA ---
+        // ==========================================
+        const modoPlazoSelect = document.getElementById('selectTipoPlazo');
+        
+        if (datosCliente.dias_habiles !== 'None' && datosCliente.dias_habiles !== '') {
+            // 1. TIENE DÍAS HÁBILES GUARDADOS
+            modoPlazoSelect.value = 'habiles';
+            cambiarTipoPlazo();
+            
+            if (datosCliente.dias_habiles === '0' || datosCliente.dias_habiles === 0 || String(datosCliente.dias_habiles).toUpperCase() === 'HOY') {
+                $('#chkInmediata').prop('checked', true);
+                toggleInmediata(); // Esto lo pintará de verde y le pondrá "HOY"
+            } else {
+                $('#inputDiasHabiles').val(datosCliente.dias_habiles);
+            }
+        } 
+        else if (datosCliente.fecha && datosCliente.fecha !== 'None' && datosCliente.fecha !== '') {
+            // 2. TIENE FECHA FIJA EXACTA
+            modoPlazoSelect.value = 'fija';
+            cambiarTipoPlazo();
+            $('#inputFechaEntrega').val(datosCliente.fecha);
+        } 
+        else {
+            // 3. ESTABA VACÍO (A coordinar)
+            modoPlazoSelect.value = 'habiles';
+            cambiarTipoPlazo();
         }
 
-        $('#selectEntrega').val(datosCliente.tipo_entrega);
-
-        $('#inputFechaEntrega').val(datosCliente.fecha);
+        // Tipo y dirección de entrega
         $('#selectEntrega').val(datosCliente.tipo_entrega);
         if(datosCliente.tipo_entrega === 'Envio'){
             $('#divDireccionEntrega').show(); 
@@ -1124,12 +1156,7 @@ window.aplicarDescuentoItem = function(index) {
         }
         {% endif %}
 
-
-
     });
-
-
-
 
 
     window.iniciarCambioMoneda = function(selectElement) {
@@ -4010,9 +4037,16 @@ function recalcularCarritoPorMoneda() {
             if (!agenciaFinal) agenciaFinal = 'NO REQUIERE'; // Seguridad extra
         }
 
-        let diasHabilesValor = $('#inputDiasHabiles').val();
-        if (diasHabilesValor === 'HOY') {
-            diasHabilesValor = '0'; // Lo convertimos a 0 para guardar en BD
+        // --- PROCESAR TIEMPO DE ENTREGA ---
+        let modoPlazo = $('#selectTipoPlazo').val();
+        let diasHabilesValor = '';
+        let fechaFijaValor = '';
+
+        if (modoPlazo === 'habiles') {
+            diasHabilesValor = $('#inputDiasHabiles').val();
+            if (diasHabilesValor === 'HOY') diasHabilesValor = '0';
+        } else {
+            fechaFijaValor = $('#inputFechaEntrega').val();
         }
 
         // 4. CONSTRUIR PAYLOAD (AQUÍ ESTÁ EL TRUCO PARA QUE PYTHON LO GUARDE)
@@ -4039,8 +4073,8 @@ function recalcularCarritoPorMoneda() {
 
             // --- NUEVO CAMPO DE DÍAS HÁBILES CAPTURADO ---
             dias_habiles_entrega: diasHabilesValor,
+            fecha_entrega: fechaFijaValor,
             
-            fecha_entrega: $('#inputFechaEntrega').val(), 
             tipo_entrega: $('#selectEntrega').val(), 
             direccion_entrega: $('#inputDireccionEntrega').val(),
             
@@ -4258,6 +4292,28 @@ function toggleInmediata() {
         input.classList.add('border-warning', 'bg-white', 'text-dark');
     }
 }
+
+// --- NUEVO: ALTERNAR ENTRE DÍAS HÁBILES Y FECHA FIJA ---
+    function cambiarTipoPlazo() {
+        const modo = document.getElementById('selectTipoPlazo').value;
+        const bHabiles = document.getElementById('bloqueDiasHabiles');
+        const bFija = document.getElementById('bloqueFechaFija');
+        const inputHabiles = document.getElementById('inputDiasHabiles');
+        const inputFija = document.getElementById('inputFechaEntrega');
+        const chk = document.getElementById('chkInmediata');
+
+        if (modo === 'habiles') {
+            bHabiles.classList.remove('d-none');
+            bFija.classList.add('d-none');
+            inputFija.value = ''; // Limpiar la fecha si se arrepiente
+        } else {
+            bHabiles.classList.add('d-none');
+            bFija.classList.remove('d-none');
+            // Limpiar los días si se arrepiente
+            inputHabiles.value = '';
+            if(chk) { chk.checked = false; toggleInmediata(); } 
+        }
+    }
 
 
 
