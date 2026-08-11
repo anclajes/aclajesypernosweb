@@ -462,41 +462,43 @@
                     <div class="card-body p-0 table-responsive">
                         <table class="table table-hover align-middle mb-0 text-nowrap">
                             <!-- BLOQUE 2 REEMPLAZADO: Encabezados y Pie de Tabla del Modal -->
+                            <!-- BLOQUE 1 REEMPLAZADO: Encabezados y Pie de Tabla del Modal -->
                             <thead class="bg-light small text-uppercase text-muted">
                                 <tr>
                                     <th class="ps-3 border-0">Código</th>
                                     <th class="border-0">Descripción</th>
                                     <th class="text-center border-0">Cant.</th>
-                                    <th class="text-end border-0">P. Unit</th>
-                                    <th class="text-center border-0">Variación</th> <!-- NUEVA COLUMNA -->
+                                    <th class="text-end border-0" style="min-width: 80px;">P. Lista</th> <!-- NUEVA COLUMNA -->
+                                    <th class="text-end border-0" style="min-width: 80px;">P. Final</th> <!-- RENOMBRADA -->
+                                    <th class="text-center border-0">Variación</th>
                                     <th class="text-end pe-3 border-0">Subtotal</th>
                                 </tr>
                             </thead>
                             <tbody id="view_tabla_items" class="small">
                             </tbody>
                             <tfoot class="bg-light border-top">
-                                <!-- NUEVO: Fila de Desglose de Impacto -->
+                                <!-- Desglose de Impacto -->
                                 <tr id="row_impacto_neto" class="d-none">
-                                    <td colspan="4" class="text-end fw-bold pb-0" style="font-size: 0.75rem;">IMPACTO NETO VS LISTA:</td>
+                                    <td colspan="5" class="text-end fw-bold pb-0" style="font-size: 0.75rem;">IMPACTO NETO VS LISTA:</td>
                                     <td colspan="2" class="text-end pe-3 fw-bold pb-0 fs-6" id="view_impacto_neto">...</td>
                                 </tr>
                                 <tr>
-                                    <td colspan="4"></td>
+                                    <td colspan="5"></td>
                                     <td class="text-end fw-bold small text-muted">SUBTOTAL:</td>
                                     <td class="text-end pe-3 fw-bold" id="view_subtotal">0.00</td>
                                 </tr>
                                 <tr>
-                                    <td colspan="4"></td>
+                                    <td colspan="5"></td>
                                     <td class="text-end small text-danger fw-bold" id="view_descuento_label">DESC.:</td>
                                     <td class="text-end pe-3 text-danger" id="view_descuento">- 0.00</td>
                                 </tr>
                                 <tr>
-                                    <td colspan="4"></td>
+                                    <td colspan="5"></td>
                                     <td class="text-end small text-muted">IGV (18%):</td>
                                     <td class="text-end pe-3" id="view_igv">0.00</td>
                                 </tr>
                                 <tr class="bg-white">
-                                    <td colspan="3" class="ps-3 pt-3">
+                                    <td colspan="4" class="ps-3 pt-3">
                                         <span class="badge bg-light text-dark border fw-normal">Moneda: <strong id="view_moneda"></strong></span>
                                     </td>
                                     <td colspan="2" class="text-end pt-3 fs-6 fs-md-5 fw-bold text-dark">TOTAL:</td>
@@ -914,34 +916,43 @@ document.addEventListener("DOMContentLoaded", function() {
 
                         // ---> CÁLCULO DE VARIACIÓN (NUEVO) <---
                         // Si es una orden vieja y no tiene precio_catalogo_sistema, usa el precio_base como respaldo
+                        // --- CÁLCULO DE VARIACIÓN Y SEPARACIÓN DE COLUMNAS ---
                         let precioCatalogo = parseFloat(item.precio_catalogo_sistema) || parseFloat(item.precio_base) || 0;
                         let precioActual = parseFloat(item.precio);
+                        
                         let htmlVariacion = '<span class="text-muted" style="font-size:0.65rem;">-</span>';
+                        let htmlPrecioLista = '<span class="text-muted fst-italic" style="font-size: 0.75rem;">Libre</span>';
+                        let colorPrecioFinal = 'text-dark';
 
-                        if (!isNaN(precioActual) && precioCatalogo > 0) {
-                            let diferenciaUnitaria = precioActual - precioCatalogo;
-                            let diferenciaLinea = diferenciaUnitaria * item.cantidad; 
+                        if (precioCatalogo > 0) {
+                            htmlPrecioLista = `<span class="text-muted" style="font-size: 0.8rem;">${simbolo} ${precioCatalogo.toFixed(2)}</span>`;
                             
-                            if (Math.abs(diferenciaUnitaria) < 0.005) {
-                                htmlVariacion = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
-                            } else {
-                                let variacionPorcentaje = ((diferenciaUnitaria / precioCatalogo) * 100).toFixed(1);
-                                if (diferenciaUnitaria < 0) {
-                                    htmlVariacion = `
-                                        <span class="badge bg-danger mb-1" style="font-size:0.65rem;">▼ ${variacionPorcentaje}%</span><br>
-                                        <span class="text-danger fw-bold" style="font-size:0.7rem;">-${simbolo} ${Math.abs(diferenciaLinea).toFixed(2)}</span>`;
+                            if (!isNaN(precioActual)) {
+                                let diferenciaUnitaria = precioActual - precioCatalogo;
+                                let diferenciaLinea = diferenciaUnitaria * item.cantidad; 
+                                
+                                if (Math.abs(diferenciaUnitaria) < 0.005) {
+                                    htmlVariacion = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
                                 } else {
-                                    htmlVariacion = `
-                                        <span class="badge bg-success mb-1" style="font-size:0.65rem;">▲ +${variacionPorcentaje}%</span><br>
-                                        <span class="text-success fw-bold" style="font-size:0.7rem;">+${simbolo} ${diferenciaLinea.toFixed(2)}</span>`;
-                                }
-                            }                
-                            variacionTotalItems += diferenciaLinea;
-                            hayComparables = true;
-                        } else if (precioCatalogo <= 0) {
-                            htmlVariacion = '<span class="badge bg-light text-muted border" style="font-size:0.6rem;">Libre</span>';
+                                    let variacionPorcentaje = ((diferenciaUnitaria / precioCatalogo) * 100).toFixed(1);
+                                    if (diferenciaUnitaria < 0) {
+                                        // VENDIÓ MÁS BARATO -> ROJO
+                                        colorPrecioFinal = 'text-danger';
+                                        htmlVariacion = `
+                                            <span class="badge bg-danger mb-1" style="font-size:0.65rem;">▼ ${variacionPorcentaje}%</span><br>
+                                            <span class="text-danger fw-bold" style="font-size:0.7rem;">-${simbolo} ${Math.abs(diferenciaLinea).toFixed(2)}</span>`;
+                                    } else {
+                                        // VENDIÓ MÁS CARO -> VERDE
+                                        colorPrecioFinal = 'text-success';
+                                        htmlVariacion = `
+                                            <span class="badge bg-success mb-1" style="font-size:0.65rem;">▲ +${variacionPorcentaje}%</span><br>
+                                            <span class="text-success fw-bold" style="font-size:0.7rem;">+${simbolo} ${diferenciaLinea.toFixed(2)}</span>`;
+                                    }
+                                }                
+                                variacionTotalItems += diferenciaLinea;
+                                hayComparables = true;
+                            }
                         }
-                        // ----------------------------------------
 
                         let row = `<tr>
                             <td class="ps-3"><div class="d-flex align-items-center"><span class="fw-bold small text-muted">${item.sku}</span></div></td>
@@ -949,6 +960,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                 <div class="fw-bold text-dark">${item.descripcion}</div>
                                 ${estadoHtml}`;
                         
+                        // Si es KIT (GLB)
                         if(item.tipo === 'GLB' && item.componentes && item.componentes.length > 0) {
                             row += `<div class="mt-2 p-2 bg-white border rounded shadow-sm small">
                                         <div class="fw-bold text-primary text-uppercase mb-1" style="font-size:0.7rem">
@@ -961,10 +973,12 @@ document.addEventListener("DOMContentLoaded", function() {
                             row += `</ul></div>`;
                         }
 
+                        // NUEVA ESTRUCTURA DE CELDAS CON LA COLUMNA EXTRA
                         row += `</td>
                                 <td class="text-center fw-bold fs-6 align-middle">${item.cantidad}</td>
-                                <td class="text-end text-muted align-middle">${simbolo} ${item.precio.toFixed(2)}</td>
-                                <td class="text-center align-middle lh-1">${htmlVariacion}</td> <!-- CELDA VARIACIÓN -->
+                                <td class="text-end align-middle bg-light bg-opacity-50 border-start">${htmlPrecioLista}</td>
+                                <td class="text-end align-middle fw-bold ${colorPrecioFinal} fs-6 border-end">${simbolo} ${precioActual.toFixed(2)}</td>
+                                <td class="text-center align-middle lh-1">${htmlVariacion}</td>
                                 <td class="text-end fw-bold pe-3 align-middle">${simbolo} ${item.subtotal.toFixed(2)}</td>
                             </tr>`;
                         
