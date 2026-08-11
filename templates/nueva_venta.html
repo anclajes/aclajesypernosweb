@@ -421,7 +421,7 @@
                             <!-- AGREGADO: onkeyup="compararPrecioAlerta()" -->
                             <input type="number" id="precioManualInput" class="form-control fw-bold text-end border-0 px-1" 
                                 step="any" onkeydown="return filtroTeclas(event, 'decimal')" 
-                                oninput="validarEntradaString(this, 6);" onkeyup="compararPrecioAlerta()">
+                                oninput="validarEntradaString(this, 6); compararPrecioAlerta();">
                                 
                             <input type="hidden" id="precioBaseHidden">
                         </div>
@@ -2579,7 +2579,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
                 // GUARDAR EN HIDDENS PARA EL BOTÓN VER FICHA
-                $('#hidden_estado').val(data.estado);
+                $('#hidden_estado').val(data.estado);   
                 $('#hidden_condicion').val(data.condicion);
 
                 if(typeof actualizarBadges === 'function') actualizarBadges(data.estado, data.condicion);
@@ -2657,9 +2657,13 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 
             $('#precioBaseHidden').val(precioBaseUSD); calcularPrecioUnitarioVisual(); $('#precioManualInput').focus(); document.getElementById('btnAgregar').disabled = false;
 
+            compararPrecioAlerta();
+
         });
 
         $('#productoSelect').on('select2:clear', function (e) { stockActualSeleccionado = 0; $('#info_stock').val(""); $('#precioBaseHidden').val(""); $('#precioManualInput').val(""); document.getElementById('btnAgregar').disabled = true; calcularSubtotalPrevio(); });
+
+        $('#alertaPrecioUnitario').html('');
 
     }
 
@@ -2942,31 +2946,40 @@ function buscarClienteApi(force = false) {
         
         let nombreHtml = `${item.nombre} ${badgeEstadoHtml}`;
 
-        // --- 2. CÁLCULO DE DESCUENTOS Y PRECIOS TACHADOS (MEJORADO) ---
+        // --- 2. CÁLCULO DE DESCUENTOS Y PRECIOS TACHADOS (ULTRA MEJORADO) ---
         let precioTachadoHtml = '';
-        let inputClass = 'editable-cell';
+        let inputClass = 'editable-cell form-control-sm text-end'; 
 
         let tc_actual = parseFloat($('#inputTC').val()) || 1;
-        // Calculamos el precio de catálogo en la moneda actual
+        // Calculamos el precio de catálogo
         let precioCatalogo = (moneda === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
-        // Redondeamos para evitar errores de coma flotante en JS
         precioCatalogo = Math.round((precioCatalogo + Number.EPSILON) * 1000000) / 1000000;
 
-        // Verificar si el precio fue alterado (por descuento de botón O por escritura manual)
-        if (item.desc_valor > 0 || item.precio !== precioCatalogo) {
+        // SOLO SI EL PRODUCTO TIENE PRECIO DE CATÁLOGO (> 0) SE HACE LA COMPARACIÓN
+        if (precioCatalogo > 0 && item.precio !== precioCatalogo) {
             
-            // Mostrar siempre el precio de catálogo como referencia (Tachado y pequeñito arriba)
-            precioTachadoHtml = `<del class="text-muted d-block" title="Precio Catálogo Oficial" style="font-size: 0.75rem; margin-bottom: -2px;">${precioCatalogo.toFixed(2)}</del>`;
+            // Calculamos el % de diferencia con 1 decimal
+            let variacionPorcentaje = (((item.precio - precioCatalogo) / precioCatalogo) * 100).toFixed(1);
             
-            // Pintar la celda dependiendo de si ganó o perdió margen
             if (item.precio < precioCatalogo) {
-                // Le bajó el precio (Descuento/Pérdida) -> Rojo
-                inputClass = 'editable-cell text-danger fw-bold border-danger bg-danger bg-opacity-10'; 
+                // Le bajó el precio -> Tachado + Etiqueta Roja
+                precioTachadoHtml = `
+                    <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                        <del class="text-muted" style="font-size: 0.75rem;">${precioCatalogo.toFixed(2)}</del>
+                        <span class="badge bg-danger" style="font-size: 0.65rem;" title="Descuento aplicado">${variacionPorcentaje}%</span>
+                    </div>`;
+                inputClass += ' text-danger fw-bold border-danger bg-danger bg-opacity-10'; 
             } else if (item.precio > precioCatalogo) {
-                // Le subió el precio (Sobreprecio/Ganancia) -> Verde
-                inputClass = 'editable-cell text-success fw-bold border-success bg-success bg-opacity-10'; 
+                // Le subió el precio -> Tachado + Etiqueta Verde
+                precioTachadoHtml = `
+                    <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                        <del class="text-muted" style="font-size: 0.75rem;">${precioCatalogo.toFixed(2)}</del>
+                        <span class="badge bg-success" style="font-size: 0.65rem;" title="Sobreprecio aplicado">+${variacionPorcentaje}%</span>
+                    </div>`;
+                inputClass += ' text-success fw-bold border-success bg-success bg-opacity-10'; 
             }
         }
+        // Si precioCatalogo es 0, inputClass se queda normal y precioTachadoHtml se queda vacío.
 
         let badgeDescHtml = '';
         let labelDesc = item.desc_label || '';
@@ -4406,30 +4419,68 @@ function seleccionarClienteDeDirectorio(ruc, nombre) {
 
 // --- FUNCIÓN QUE COMPARA EL PRECIO DIGITADO VS EL PRECIO ORIGINAL ---
 function compararPrecioAlerta() {
-    let base = parseFloat(document.getElementById('precioBaseHidden').value) || 0;
-    let actual = parseFloat(document.getElementById('precioManualInput').value) || 0;
-    let alertaDiv = document.getElementById('alertaPrecioUnitario');
+    let $alerta = $('#alertaPrecioUnitario');
+    let precioDigitado = parseFloat($('#precioManualInput').val()) || 0;
     
-    // Si el producto no tenía precio en la base de datos (Ej: 0.0)
-    if (base === 0) {
-        alertaDiv.innerHTML = `<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Sin Precio Lista</span>`;
+    // El precio base oculto (asumo que siempre está en Dólares según tu lógica anterior)
+    let precioBaseUSD = parseFloat($('#precioBaseHidden').val()) || 0;
+    
+    // Obtenemos la moneda y el TC actual para comparar manzanas con manzanas
+    let moneda = $('#selectMoneda').val() || 'PEN';
+    let tc = parseFloat($('#inputTC').val()) || 1;
+    
+    // Calculamos cuánto debería ser el precio base en la moneda seleccionada
+    let precioBaseCalculado = (moneda === 'PEN') ? (precioBaseUSD * tc) : precioBaseUSD;
+
+    // CASO A: Si el producto NO tiene precio de catálogo (Es 0 o nulo en la BD)
+    if (precioBaseCalculado <= 0) {
+        $alerta.html('<span class="text-muted fw-normal"><i class="bi bi-unlock"></i> Precio Libre</span>');
         return;
     }
+
+    // Usamos una pequeña tolerancia por los decimales infinitos del tipo de cambio
+    let diferencia = precioDigitado - precioBaseCalculado;
     
-    // Si el vendedor subió el precio
-    if (actual > base) {
-        let porcentaje = (((actual - base) / base) * 100).toFixed(1);
-        alertaDiv.innerHTML = `<span class="text-success"><i class="bi bi-arrow-up-circle-fill"></i> +${porcentaje}% (Base: ${base.toFixed(2)})</span>`;
-    } 
-    // Si el vendedor bajó el precio (Descuento manual)
-    else if (actual < base) {
-        let porcentaje = (((base - actual) / base) * 100).toFixed(1);
-        alertaDiv.innerHTML = `<span class="text-danger"><i class="bi bi-arrow-down-circle-fill"></i> -${porcentaje}% (Base: ${base.toFixed(2)})</span>`;
-    } 
-    // Si lo deja al precio oficial
-    else {
-        alertaDiv.innerHTML = `<span class="text-muted"><i class="bi bi-check-circle-fill"></i> = Precio Oficial</span>`;
+    // CASO B: Si el precio es exactamente igual al catálogo
+    if (Math.abs(diferencia) < 0.001) {
+        $alerta.html('<span class="text-muted fw-normal">Catálogo Oficial</span>');
+        return;
     }
+
+    // CASO C: Hay variación (Descuento o Sobreprecio)
+    // Se calcula con 1 solo decimal
+    let variacion = (diferencia / precioBaseCalculado) * 100;
+    let signo = variacion > 0 ? '+' : '';
+    let colorClass = variacion > 0 ? 'text-success' : 'text-danger';
+
+    $alerta.html(
+        `<span class="${colorClass}">${signo}${variacion.toFixed(1)}%</span> ` + 
+        `<span class="text-muted fw-normal">(Base: ${precioBaseCalculado.toFixed(2)})</span>`
+    );
+}
+
+// Función para actualizar el texto de "+75.5% (Base: 2.65)" en el panel de agregar
+function actualizarVariacionPrecioUI(precioBaseCalculado, precioDigitado) {
+    let $helperInfo = $('#id_de_tu_texto_helper'); // <-- CAMBIA ESTO por el ID del span donde muestras el texto "+75.5%"
+    
+    // Si no hay precio base válido (es 0 o vacío)
+    if (!precioBaseCalculado || precioBaseCalculado <= 0) {
+        $helperInfo.html('<span class="text-muted small">Precio Libre (Sin base)</span>');
+        return;
+    }
+
+    // Si el precio es igual al catálogo
+    if (precioDigitado === precioBaseCalculado) {
+        $helperInfo.html('<span class="text-muted small">Precio de Catálogo</span>');
+        return;
+    }
+
+    // Calcular variación
+    let variacion = ((precioDigitado - precioBaseCalculado) / precioBaseCalculado) * 100;
+    let signo = variacion > 0 ? '+' : '';
+    let colorClass = variacion > 0 ? 'text-success' : 'text-danger';
+
+    $helperInfo.html(`<span class="${colorClass} fw-bold small">${signo}${variacion.toFixed(1)}%</span> <span class="text-muted small">(Base: ${precioBaseCalculado.toFixed(2)})</span>`);
 }
 
     // --- REDIRECCIÓN A SUNAT (VERSIÓN DEFINITIVA Y ESTABLE) ---
