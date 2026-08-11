@@ -574,6 +574,7 @@
                             <div class="col-12 col-md-8"><strong>Razón Social:</strong> <span id="res_cliente" class="text-wrap"></span></div>
                             <div class="col-12 col-md-4"><strong>RUC:</strong> <span id="res_ruc"></span></div>
                             <div class="col-12 mt-1"><strong>Lugar Entrega:</strong> <span id="res_direccion" class="text-muted text-wrap"></span></div>
+                            <div class="col-12 col-sm-6 mt-2"><strong>Tiempo Entrega:</strong> <span id="res_entrega" class="fw-bold"></span></div>
                             <div class="col-12 col-sm-4 mt-2 border-top border-sm-0 pt-2 pt-sm-0"><strong>Calidad:</strong> <span id="res_calidad"></span></div>
                             <div class="col-12 col-sm-4 mt-2"><strong>Penalidad:</strong> <span id="res_penalidad"></span></div>
                             <div class="col-12 col-sm-4 mt-2"><strong>Agencia:</strong> <span id="res_agencia" class="text-primary fw-bold text-wrap"></span></div>
@@ -589,11 +590,17 @@
                                 <th style="min-width: 200px;" class="ps-2">Descripción</th>
                                 <th class="text-center" style="min-width: 60px;">Cant.</th>
                                 <th class="text-end" style="min-width: 80px;">P.Unit</th>
+                                <th class="text-center" style="min-width: 70px;">Var.</th>
                                 <th class="text-end pe-2" style="min-width: 90px;">Total</th>
                             </tr>
                         </thead>
                         <tbody id="tablaResumenBody"></tbody>
                     </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center px-2 py-1 mb-2 rounded" id="cardDiferenciaTotal" style="display:none;">
+                    <span class="small fw-bold" id="lbl_diferencia_total_label"></span>
+                    <strong id="lbl_diferencia_total_valor"></strong>
                 </div>
 
                 <div class="row justify-content-end text-end mt-3 px-1">
@@ -3993,6 +4000,31 @@ function recalcularCarritoPorMoneda() {
         let dir = $('#inputDireccionEntrega').val();
         if($('#selectEntrega').val() === 'Recojo') dir = "RECOJO EN TIENDA";
         $('#res_direccion').text(dir || '-');
+
+                // --- CALCULAR Y MOSTRAR TIEMPO DE ENTREGA (Días Hábiles o Fecha Fija) ---
+        let modoPlazo = $('#selectTipoPlazo').val();
+        let textoEntrega = '';
+
+        if (modoPlazo === 'habiles') {
+            let dias = $('#inputDiasHabiles').val();
+            if (dias === 'HOY' || dias === '0') {
+                textoEntrega = '<span class="text-success">🟢 ENTREGA INMEDIATA (HOY)</span>';
+            } else if (dias && dias.trim() !== '') {
+                textoEntrega = `${dias} días hábiles`;
+            } else {
+                textoEntrega = '<span class="text-muted fst-italic">A COORDINAR</span>';
+            }
+        } else {
+            let fecha = $('#inputFechaEntrega').val();
+            if (fecha) {
+                let d = new Date(fecha + 'T00:00:00');
+                let fechaTexto = d.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' });
+                textoEntrega = `<i class="bi bi-calendar-event-fill text-primary"></i> ${fechaTexto} (Fecha fija)`;
+            } else {
+                textoEntrega = '<span class="text-muted fst-italic">A COORDINAR</span>';
+            }
+        }
+        $('#res_entrega').html(textoEntrega);
         
         let agenciaFinal = $('#selectReqAgencia').val() === 'SI' ? $('#inputAgencia').val() : 'NO REQUIERE';
         $('#res_calidad').html($('#inputCalidad').val() === 'SI' ? '<span class="text-success">✅ SÍ</span>' : '❌ NO');
@@ -4005,17 +4037,56 @@ function recalcularCarritoPorMoneda() {
             let alertaStock = (item.tipo === 'PRODUCTO' && item.cantidad > item.stock) ? '<i class="bi bi-exclamation-circle-fill text-warning ms-1" title="Sin Stock"></i>' : '';
             let alertaEstado = (item.estado && item.estado !== '' && item.estado !== 'None') ? `<br><span class="badge bg-danger" style="font-size: 0.65rem;"><i class="bi bi-exclamation-triangle-fill"></i> ${item.estado}</span>` : '';
             
-            // --- NUEVO: MOSTRAR DESCUENTO INDIVIDUAL EN EL RESUMEN ---
             let badgeDesc = '';
             let labelDesc = item.desc_label || '';
             if (labelDesc !== '' && String(labelDesc).indexOf('undefined') === -1) {
                 badgeDesc = `<br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">${labelDesc}</span>`;
             }
-            
+
+            const $card = $('#cardDiferenciaTotal');
+            if (hayComparables && Math.abs(diferenciaTotalAcumulada) >= 0.01) {
+                if (diferenciaTotalAcumulada < 0) {
+                    $card.css('background-color', '#f8d7da').show();
+                    $('#lbl_diferencia_total_label').html('<i class="bi bi-arrow-down-circle-fill text-danger"></i> Descuento total vs. Lista:');
+                    $('#lbl_diferencia_total_valor').html(`<span class="text-danger">- ${simboloActual} ${Math.abs(diferenciaTotalAcumulada).toFixed(2)}</span>`);
+                } else {
+                    $card.css('background-color', '#d1e7dd').show();
+                    $('#lbl_diferencia_total_label').html('<i class="bi bi-arrow-up-circle-fill text-success"></i> Sobreprecio total vs. Lista:');
+                    $('#lbl_diferencia_total_valor').html(`<span class="text-success">+ ${simboloActual} ${diferenciaTotalAcumulada.toFixed(2)}</span>`);
+                }
+            } else {
+                $card.hide();
+            }
+
+            // --- NUEVO: BADGE DE VARIACIÓN VS PRECIO DE LISTA ---
+            let tcActual = parseFloat($('#inputTC').val()) || 1;
+            let monedaActual = $('#selectMoneda').val();
+            let precioCatalogo = (monedaActual === 'PEN') ? (item.precioBase * tcActual) : item.precioBase;
+            precioCatalogo = Math.round((precioCatalogo + Number.EPSILON) * 1000000) / 1000000;
+            let precioActual = parseFloat(item.precio);
+            let badgeVar = '<span class="text-muted" style="font-size:0.65rem;">-</span>';
+
+            if (!isNaN(precioActual)) {
+                if (precioCatalogo <= 0) {
+                    badgeVar = '<span class="badge bg-light text-muted border" style="font-size:0.6rem;">Libre</span>';
+                } else {
+                    let diferencia = precioActual - precioCatalogo;
+                    if (Math.abs(diferencia) < 0.005) {
+                        badgeVar = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
+                    } else {
+                        let variacion = ((diferencia / precioCatalogo) * 100).toFixed(1);
+                        badgeVar = diferencia < 0
+                            ? `<span class="badge bg-danger" style="font-size:0.6rem;">▼ ${variacion}%</span>`
+                            : `<span class="badge bg-success" style="font-size:0.6rem;">▲ +${variacion}%</span>`;
+                    }
+                }
+            }
+
             tbody.append(`<tr>
                 <td>${item.nombre} ${alertaStock} ${alertaEstado} ${badgeDesc}</td>
                 <td class="text-center fw-bold">${item.cantidad}</td>
-                <td class="text-end">${item.precio.toFixed(2)}</td>
+                <td class="text-end">${(!isNaN(precioActual) ? precioActual.toFixed(2) : '0.00')}</td>
+                <td class="text-center">${badgeVar}</td>
                 <td class="text-end fw-bold">${item.subtotal.toFixed(2)}</td>
             </tr>`);
         });

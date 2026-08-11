@@ -36,7 +36,6 @@ from xhtml2pdf import pisa
 
 
 
-# FUNCIÓN PARA SUMAR DÍAS HÁBILES (Lunes a Sábado) EN PYTHON
 def sumar_dias_habiles(fecha_inicio, dias):
     if not fecha_inicio or not dias: 
         return None
@@ -44,7 +43,8 @@ def sumar_dias_habiles(fecha_inicio, dias):
     fecha_actual = fecha_inicio
     while dias_restantes > 0:
         fecha_actual += timedelta(days=1)
-        if fecha_actual.weekday() != 6:  # 6 es Domingo en Python
+        # weekday(): 0=Lunes ... 4=Viernes, 5=Sábado, 6=Domingo
+        if fecha_actual.weekday() < 5:  # Solo cuenta Lunes a Viernes
             dias_restantes -= 1
     return fecha_actual
 
