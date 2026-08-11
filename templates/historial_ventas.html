@@ -127,7 +127,7 @@
                     {% else %}
                         <th>F. Entrega</th>
                     {% endif %}
-                    <th>Cliente</th>
+                    <th>Cliente / Ubicación</th>
                     <th>Vendedor</th>
                     <th class="text-end">Total</th>
                     <th class="text-center">Estado Flujo</th>
@@ -196,10 +196,20 @@
                             </td>
                         {% endif %}
 
+                            <!-- BLOQUE 1 REEMPLAZADO: Cliente y Ubicación -->
                         <td>
-                            <div class="fw-bold text-truncate" style="max-width: 200px;">{{ o.cliente.nombre }}</div>
+                            <div class="fw-bold text-truncate text-dark" style="max-width: 200px;">{{ o.cliente.nombre }}</div>
+                            
+                            <!-- NUEVO: Mostrar Distrito y Provincia si existen -->
+                            {% if o.cliente.distrito or o.cliente.provincia %}
+                                <div class="text-muted" style="font-size: 0.7rem; margin-top: 1px;">
+                                    <i class="bi bi-geo-alt-fill text-danger"></i> 
+                                    {{ o.cliente.distrito | default('-', true) }}, {{ o.cliente.provincia | default('-', true) }}
+                                </div>
+                            {% endif %}
+                            
                             {% if o.orden_compra %}
-                                <div class="text-primary" style="font-size:0.75rem"><i class="bi bi-receipt"></i> OC: {{ o.orden_compra }}</div>
+                                <div class="text-primary mt-1" style="font-size:0.75rem"><i class="bi bi-receipt"></i> OC: {{ o.orden_compra }}</div>
                             {% endif %}
                         </td>
                         <td class="text-muted"><i class="bi bi-person"></i> {{ o.vendedor.username }}</td>
@@ -451,30 +461,37 @@
                     </div>
                     <div class="card-body p-0 table-responsive">
                         <table class="table table-hover align-middle mb-0 text-nowrap">
+                            <!-- BLOQUE 2 REEMPLAZADO: Encabezados y Pie de Tabla del Modal -->
                             <thead class="bg-light small text-uppercase text-muted">
                                 <tr>
                                     <th class="ps-3 border-0">Código</th>
                                     <th class="border-0">Descripción</th>
                                     <th class="text-center border-0">Cant.</th>
                                     <th class="text-end border-0">P. Unit</th>
+                                    <th class="text-center border-0">Variación</th> <!-- NUEVA COLUMNA -->
                                     <th class="text-end pe-3 border-0">Subtotal</th>
                                 </tr>
                             </thead>
                             <tbody id="view_tabla_items" class="small">
                             </tbody>
                             <tfoot class="bg-light border-top">
+                                <!-- NUEVO: Fila de Desglose de Impacto -->
+                                <tr id="row_impacto_neto" class="d-none">
+                                    <td colspan="4" class="text-end fw-bold pb-0" style="font-size: 0.75rem;">IMPACTO NETO VS LISTA:</td>
+                                    <td colspan="2" class="text-end pe-3 fw-bold pb-0 fs-6" id="view_impacto_neto">...</td>
+                                </tr>
                                 <tr>
-                                    <td colspan="3"></td>
+                                    <td colspan="4"></td>
                                     <td class="text-end fw-bold small text-muted">SUBTOTAL:</td>
                                     <td class="text-end pe-3 fw-bold" id="view_subtotal">0.00</td>
                                 </tr>
                                 <tr>
-                                    <td colspan="3"></td>
+                                    <td colspan="4"></td>
                                     <td class="text-end small text-danger fw-bold" id="view_descuento_label">DESC.:</td>
                                     <td class="text-end pe-3 text-danger" id="view_descuento">- 0.00</td>
                                 </tr>
                                 <tr>
-                                    <td colspan="3"></td>
+                                    <td colspan="4"></td>
                                     <td class="text-end small text-muted">IGV (18%):</td>
                                     <td class="text-end pe-3" id="view_igv">0.00</td>
                                 </tr>
@@ -482,7 +499,7 @@
                                     <td colspan="3" class="ps-3 pt-3">
                                         <span class="badge bg-light text-dark border fw-normal">Moneda: <strong id="view_moneda"></strong></span>
                                     </td>
-                                    <td class="text-end pt-3 fs-6 fs-md-5 fw-bold text-dark">TOTAL:</td>
+                                    <td colspan="2" class="text-end pt-3 fs-6 fs-md-5 fw-bold text-dark">TOTAL:</td>
                                     <td class="text-end pe-3 pt-3 fs-6 fs-md-5 fw-bold text-primary" id="view_total">0.00</td>
                                 </tr>
                             </tfoot>
@@ -882,9 +899,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     }
                     $('#view_descuento_label').text(labelDescGeneral);
 
-                    // --- LLENAR TABLA DE PRODUCTOS ---
+                    // --- LLENAR TABLA DE PRODUCTOS (MEJORADA CON VARIACIÓN) ---
                     const tbody = $('#view_tabla_items'); 
                     tbody.empty();
+                    
+                    let variacionTotalItems = 0;
+                    let hayComparables = false;
                     
                     d.items.forEach(item => {
                         let estadoHtml = '';
@@ -892,31 +912,42 @@ document.addEventListener("DOMContentLoaded", function() {
                             estadoHtml = `<div class="mt-1"><span class="badge bg-danger text-white shadow-sm" style="font-size: 0.65rem; padding: 4px 8px;"><i class="bi bi-exclamation-triangle-fill"></i> ${item.estado_producto}</span></div>`;
                         }
 
-                        // AGREGAR DESCUENTO INDIVIDUAL
-                        let descuentoItemHtml = '';
-                        if(item.desc_valor > 0) {
-                            let tipoItem = (item.desc_tipo || '').toString().toUpperCase().trim();
-                            let descLabel = (item.desc_label || '').toString();
+                        // ---> CÁLCULO DE VARIACIÓN (NUEVO) <---
+                        // Si es una orden vieja y no tiene precio_catalogo_sistema, usa el precio_base como respaldo
+                        let precioCatalogo = parseFloat(item.precio_catalogo_sistema) || parseFloat(item.precio_base) || 0;
+                        let precioActual = parseFloat(item.precio);
+                        let htmlVariacion = '<span class="text-muted" style="font-size:0.65rem;">-</span>';
+
+                        if (!isNaN(precioActual) && precioCatalogo > 0) {
+                            let diferenciaUnitaria = precioActual - precioCatalogo;
+                            let diferenciaLinea = diferenciaUnitaria * item.cantidad; 
                             
-                            let esPorcentajeItem = tipoItem.includes('PORC') || tipoItem.includes('%') || descLabel.includes('%');
-                            
-                            let textoDesc = esPorcentajeItem 
-                                ? `Descuento: ${parseFloat(item.desc_valor)}%` 
-                                : `Descuento Fijo: ${simbolo} ${parseFloat(item.desc_valor).toFixed(2)}`;
-                                
-                            descuentoItemHtml = `<div class="mt-1"><span class="badge bg-warning text-dark border border-warning" style="font-size:0.65rem"><i class="bi bi-tag-fill"></i> ${textoDesc}</span></div>`;
+                            if (Math.abs(diferenciaUnitaria) < 0.005) {
+                                htmlVariacion = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
+                            } else {
+                                let variacionPorcentaje = ((diferenciaUnitaria / precioCatalogo) * 100).toFixed(1);
+                                if (diferenciaUnitaria < 0) {
+                                    htmlVariacion = `
+                                        <span class="badge bg-danger mb-1" style="font-size:0.65rem;">▼ ${variacionPorcentaje}%</span><br>
+                                        <span class="text-danger fw-bold" style="font-size:0.7rem;">-${simbolo} ${Math.abs(diferenciaLinea).toFixed(2)}</span>`;
+                                } else {
+                                    htmlVariacion = `
+                                        <span class="badge bg-success mb-1" style="font-size:0.65rem;">▲ +${variacionPorcentaje}%</span><br>
+                                        <span class="text-success fw-bold" style="font-size:0.7rem;">+${simbolo} ${diferenciaLinea.toFixed(2)}</span>`;
+                                }
+                            }                
+                            variacionTotalItems += diferenciaLinea;
+                            hayComparables = true;
+                        } else if (precioCatalogo <= 0) {
+                            htmlVariacion = '<span class="badge bg-light text-muted border" style="font-size:0.6rem;">Libre</span>';
                         }
+                        // ----------------------------------------
 
                         let row = `<tr>
-                            <td class="ps-3">
-                                <div class="d-flex align-items-center">
-                                    <span class="fw-bold small text-muted">${item.sku}</span>
-                                </div>
-                            </td>
+                            <td class="ps-3"><div class="d-flex align-items-center"><span class="fw-bold small text-muted">${item.sku}</span></div></td>
                             <td>
                                 <div class="fw-bold text-dark">${item.descripcion}</div>
-                                ${estadoHtml} 
-                                ${descuentoItemHtml}`;
+                                ${estadoHtml}`;
                         
                         if(item.tipo === 'GLB' && item.componentes && item.componentes.length > 0) {
                             row += `<div class="mt-2 p-2 bg-white border rounded shadow-sm small">
@@ -931,12 +962,10 @@ document.addEventListener("DOMContentLoaded", function() {
                         }
 
                         row += `</td>
-                                <td class="text-center fw-bold fs-6">${item.cantidad}</td>
-                                <td class="text-end text-muted">
-                                    ${item.desc_valor > 0 ? `<del class="text-danger" style="font-size:0.7rem">${simbolo} ${parseFloat(item.precio_base).toFixed(2)}</del><br>` : ''}
-                                    ${simbolo} ${item.precio.toFixed(2)}
-                                </td>
-                                <td class="text-end fw-bold pe-3">${simbolo} ${item.subtotal.toFixed(2)}</td>
+                                <td class="text-center fw-bold fs-6 align-middle">${item.cantidad}</td>
+                                <td class="text-end text-muted align-middle">${simbolo} ${item.precio.toFixed(2)}</td>
+                                <td class="text-center align-middle lh-1">${htmlVariacion}</td> <!-- CELDA VARIACIÓN -->
+                                <td class="text-end fw-bold pe-3 align-middle">${simbolo} ${item.subtotal.toFixed(2)}</td>
                             </tr>`;
                         
                         tbody.append(row);
@@ -944,12 +973,23 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     $('#view_moneda').text(d.moneda);
                     
-                    // CORRECCIÓN VISUAL: Mostrar el Subtotal BRUTO arriba, para que tenga sentido restarle el descuento abajo.
+                    // --- CÁLCULO DE IMPACTO GLOBAL EN MODAL ---
+                    let descuentoGlobalAplicado = parseFloat(d.descuento_total) || 0;
+                    let impactoNetoFinal = variacionTotalItems - descuentoGlobalAplicado; // Se resta porque el descuento es pérdida
+
+                    if (hayComparables && Math.abs(impactoNetoFinal) > 0.01) {
+                        let colorImpacto = impactoNetoFinal < 0 ? 'text-danger' : 'text-success';
+                        let signoImpacto = impactoNetoFinal < 0 ? '-' : '+';
+                        $('#view_impacto_neto').html(`<span class="${colorImpacto}">${signoImpacto} ${simbolo} ${Math.abs(impactoNetoFinal).toFixed(2)}</span>`);
+                        $('#row_impacto_neto').removeClass('d-none');
+                    } else {
+                        $('#row_impacto_neto').addClass('d-none');
+                    }
+
+                    // CORRECCIÓN VISUAL DE TOTALES
                     $('#view_subtotal').text(simbolo + " " + subtotalBrutoCalculado.toFixed(2));
-                    
                     $('#view_descuento').text("- " + simbolo + " " + parseFloat(d.descuento_total).toFixed(2));
                     $('#view_igv').text(simbolo + " " + parseFloat(d.igv).toFixed(2));
-                    
                     $('#view_total').text(simbolo + " " + parseFloat(d.total).toFixed(2));
 
                     // --- DIBUJAR LÍNEA DE TIEMPO (TIMELINE - 5 PASOS) ---
