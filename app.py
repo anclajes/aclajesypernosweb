@@ -725,6 +725,158 @@ def descargar_plantilla():
         download_name='Plantilla_Importacion_ImportBolts.xlsx'
     )
 
+@app.route('/exportar_historial_excel')
+def exportar_historial_excel():
+    if 'user_id' not in session: 
+        return redirect(url_for('login'))
+    
+    rol = session['role']
+    user_id = session['user_id']
+    
+    # --- FILTRO DE ESTADO ---
+    estado_filtro = request.args.get('estado_filtro', 'Entregado')
+    query = Order.query
+    
+    if estado_filtro == 'todos':
+        query = query.filter(Order.estado.in_(['Por Despachar', 'Entregado', 'Despachado', 'Rechazado']))
+    else:
+        query = query.filter(Order.estado == estado_filtro)
+    
+    # --- PRIVACIDAD: vendedor solo ve las suyas ---
+    if rol == 'vendedor':
+        query = query.filter(Order.vendedor_id == user_id)
+    elif request.args.get('solo_mias') == 'on':
+        query = query.filter(Order.vendedor_id == user_id)
+    
+    # --- MISMOS FILTROS QUE historial_ventas ---
+    busqueda = request.args.get('busqueda')
+    if busqueda:
+        term_id = busqueda
+        if busqueda.isdigit(): term_id = str(int(busqueda))
+        query = query.join(Client).join(User).filter(
+            or_(
+                Client.nombre.ilike(f"%{busqueda}%"),
+                Client.documento.ilike(f"%{busqueda}%"),
+                User.username.ilike(f"%{busqueda}%"),
+                User.nombre_completo.ilike(f"%{busqueda}%"),
+                func.cast(Order.id, db.String).like(f"%{term_id}%")
+            )
+        )
+    
+    filtro_cliente_ruc = request.args.get('filtro_cliente')
+    if filtro_cliente_ruc:
+        cliente_obj = Client.query.filter_by(documento=filtro_cliente_ruc).first()
+        if cliente_obj: 
+            query = query.filter(Order.cliente_id == cliente_obj.id)
+    
+    fecha_inicio = request.args.get('fecha_inicio')
+    fecha_fin = request.args.get('fecha_fin')
+    if fecha_inicio and fecha_fin:
+        try:
+            start = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+            end = datetime.strptime(fecha_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+            query = query.filter(Order.fecha.between(start, end))
+        except: 
+            pass
+    
+    filtro_vendedor = request.args.get('filtro_vendedor')
+    if rol != 'vendedor' and filtro_vendedor and filtro_vendedor != 'todos':
+        query = query.filter(Order.vendedor_id == filtro_vendedor)
+    
+    ordenes = query.order_by(Order.fecha.desc()).all()
+    
+    if not ordenes:
+        flash('No hay registros para exportar con los filtros seleccionados.')
+        return redirect(url_for('historial_ventas', vista='historial'))
+    
+    # --- CONSTRUCCIÓN DE DATOS ---
+    resumen_data = []
+    detalle_data = []
+    
+    for o in ordenes:
+        simbolo = "S/" if o.moneda == 'PEN' else "$"
+        
+        resumen_data.append({
+            'Código': f"{o.id:05d}",
+            'Fecha': o.fecha.strftime('%d/%m/%Y'),
+            'Hora': o.fecha.strftime('%H:%M'),
+            'Estado': o.estado,
+            'Vendedor': o.vendedor.nombre_completo if o.vendedor else '-',
+            'Cliente': o.cliente.nombre if o.cliente else '-',
+            'RUC/DNI': o.cliente.documento if o.cliente else '-',
+            'Departamento': o.cliente.departamento or '-',
+            'Provincia': o.cliente.provincia or '-',
+            'Distrito': o.cliente.distrito or '-',
+            'Tipo Entrega': o.tipo_entrega or '-',
+            'Dirección Entrega': o.direccion_envio or '-',
+            'Fecha Entrega': o.fecha_entrega.strftime('%d/%m/%Y') if o.fecha_entrega else '-',
+            'Días Hábiles': o.dias_habiles_entrega if o.dias_habiles_entrega is not None else '-',
+            'Agencia': o.agencia or '-',
+            'Condición Pago': o.condicion_pago or '-',
+            'O/C Cliente': o.orden_compra or '-',
+            'Moneda': o.moneda,
+            'Subtotal': o.subtotal,
+            'Descuento': o.descuento_total,
+            'IGV': o.igv,
+            'Total': o.total,
+            'Cant. Items': len(o.details)
+        })
+        
+        for d in o.details:
+            nombre_item = d.product.nombre if d.product else (d.nombre_personalizado or 'Item')
+            sku_item = d.product.sku if d.product else (d.item_type or '-')
+            precio_lista = d.precio_catalogo_sistema or d.precio_base or 0
+            
+            detalle_data.append({
+                'Código Cotización': f"{o.id:05d}",
+                'Fecha': o.fecha.strftime('%d/%m/%Y'),
+                'Vendedor': o.vendedor.nombre_completo if o.vendedor else '-',
+                'Cliente': o.cliente.nombre if o.cliente else '-',
+                'SKU': sku_item,
+                'Descripción': nombre_item,
+                'Tipo': d.item_type,
+                'Cantidad': d.cantidad,
+                'P. Lista (unit)': round(precio_lista, 2),
+                'P. Vendido (unit)': round(d.precio_aplicado, 2),
+                'Variación %': round(((d.precio_aplicado - precio_lista) / precio_lista * 100), 1) if precio_lista > 0 else '',
+                'Subtotal Línea': round(d.subtotal, 2),
+                'Moneda': o.moneda
+            })
+    
+    df_resumen = pd.DataFrame(resumen_data)
+    df_detalle = pd.DataFrame(detalle_data)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_resumen.to_excel(writer, index=False, sheet_name='Resumen Ventas')
+        df_detalle.to_excel(writer, index=False, sheet_name='Detalle Productos')
+        
+        workbook = writer.book
+        formato_header = workbook.add_format({
+            'bold': True, 'bg_color': '#0B3D91', 'font_color': 'white', 'border': 1
+        })
+        
+        for sheet_name, df in [('Resumen Ventas', df_resumen), ('Detalle Productos', df_detalle)]:
+            ws = writer.sheets[sheet_name]
+            for idx, col in enumerate(df.columns):
+                max_len = max(df[col].astype(str).map(len).max() if len(df) > 0 else 10, len(col)) + 2
+                ws.set_column(idx, idx, min(max_len, 45))
+                ws.write(0, idx, col, formato_header)
+            ws.freeze_panes(1, 0)
+            ws.autofilter(0, 0, len(df), len(df.columns) - 1)
+    
+    output.seek(0)
+    
+    sufijo_estado = 'Entregados' if estado_filtro == 'Entregado' else 'Todos'
+    nombre_archivo = f"Reporte_Ventas_{sufijo_estado}_{hora_peru().strftime('%Y%m%d_%H%M')}.xlsx"
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=nombre_archivo
+    )
+
 @app.route('/api/crear_servicio_rapido', methods=['POST'])
 def crear_servicio_rapido():
     if session.get('user_id') is None: return {'status': 'error', 'msg': 'No autorizado'}, 403
