@@ -3999,125 +3999,135 @@ function mostrarModalResumen() {
     if ($('#selectEntrega').val() === 'Recojo') dir = "RECOJO EN TIENDA";
     $('#res_direccion').text(dir || '-');    
 
-    // --- TIEMPO DE ENTREGA (Días Hábiles o Fecha Fija) ---
+    // --- TIEMPO DE ENTREGA ---
     let modoPlazo = $('#selectTipoPlazo').val();
     let textoEntrega = '';
-
     if (modoPlazo === 'habiles') {
         let dias = $('#inputDiasHabiles').val();
-        if (dias === 'HOY' || dias === '0') {
-            textoEntrega = '<span class="text-success">🟢 ENTREGA INMEDIATA (HOY)</span>';
-        } else if (dias && dias.trim() !== '') {
-            textoEntrega = `${dias} días hábiles`;
-        } else {
-            textoEntrega = '<span class="text-muted fst-italic">A COORDINAR</span>';
-        }
+        if (dias === 'HOY' || dias === '0') textoEntrega = '<span class="text-success">🟢 ENTREGA INMEDIATA (HOY)</span>';
+        else if (dias && dias.trim() !== '') textoEntrega = `${dias} días hábiles`;
+        else textoEntrega = '<span class="text-muted fst-italic">A COORDINAR</span>';
     } else {
         let fecha = $('#inputFechaEntrega').val();
         if (fecha) {
             let d = new Date(fecha + 'T00:00:00');
-            let fechaTexto = d.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' });
-            textoEntrega = `<i class="bi bi-calendar-event-fill text-primary"></i> ${fechaTexto} (Fecha fija)`;
+            textoEntrega = `<i class="bi bi-calendar-event-fill text-primary"></i> ${d.toLocaleDateString('es-PE', { day: '2-digit', month: 'long', year: 'numeric' })} (Fecha fija)`;
         } else {
             textoEntrega = '<span class="text-muted fst-italic">A COORDINAR</span>';
         }
     }
     $('#res_entrega').html(textoEntrega);
 
-    let agenciaFinal = $('#selectReqAgencia').val() === 'SI' ? $('#inputAgencia').val() : 'NO REQUIERE';
     $('#res_calidad').html($('#inputCalidad').val() === 'SI' ? '<span class="text-success">✅ SÍ</span>' : '❌ NO');
     $('#res_penalidad').html($('#inputPenalidad').val() === 'SI' ? '<span class="text-danger">⚠️ SÍ</span>' : '❌ NO');
-    $('#res_agencia').text(agenciaFinal);    
+    $('#res_agencia').text($('#selectReqAgencia').val() === 'SI' ? $('#inputAgencia').val() : 'NO REQUIERE');    
 
-    // --- VARIABLES COMUNES PARA COMPARATIVO DE PRECIOS ---
+    // --- VARIABLES DE CÁLCULO ---
     let tcActual = parseFloat($('#inputTC').val()) || 1;
     let monedaActual = $('#selectMoneda').val();
     let simboloActual = monedaActual === 'PEN' ? 'S/' : '$';
-    let diferenciaTotalAcumulada = 0;
+    
+    let variacionTotalItems = 0; // Suma pura de lo modificado línea por línea
     let hayComparables = false;    
 
-    // --- 1. RECORRER ITEMS: llenar tabla + acumular diferencia total ---
     const tbody = $('#tablaResumenBody');
     tbody.empty();
 
+    // --- 1. RECORRER ITEMS ---
     carrito.forEach(item => {
-        let alertaStock = (item.tipo === 'PRODUCTO' && item.cantidad > item.stock)
-            ? '<i class="bi bi-exclamation-circle-fill text-warning ms-1" title="Sin Stock"></i>' : '';
-        let alertaEstado = (item.estado && item.estado !== '' && item.estado !== 'None')
-            ? `<br><span class="badge bg-danger" style="font-size: 0.65rem;"><i class="bi bi-exclamation-triangle-fill"></i> ${item.estado}</span>` : '';
+        let alertaStock = (item.tipo === 'PRODUCTO' && item.cantidad > item.stock) ? '<i class="bi bi-exclamation-circle-fill text-warning ms-1" title="Sin Stock"></i>' : '';
+        let alertaEstado = (item.estado && item.estado !== '' && item.estado !== 'None') ? `<br><span class="badge bg-danger" style="font-size: 0.65rem;">${item.estado}</span>` : '';
+        let badgeDesc = (item.desc_label && item.desc_label !== '') ? `<br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">${item.desc_label}</span>` : '';
 
-        let badgeDesc = '';
-        let labelDesc = item.desc_label || '';
-        if (labelDesc !== '' && String(labelDesc).indexOf('undefined') === -1) {
-            badgeDesc = `<br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">${labelDesc}</span>`;
-        }        
-
-        // --- BADGE DE VARIACIÓN VS PRECIO DE LISTA (por item) ---
+        // Análisis de Precio vs Catálogo
         let precioCatalogo = (monedaActual === 'PEN') ? (item.precioBase * tcActual) : item.precioBase;
         precioCatalogo = Math.round((precioCatalogo + Number.EPSILON) * 1000000) / 1000000;
         let precioActual = parseFloat(item.precio);
-        let badgeVar = '<span class="text-muted" style="font-size:0.65rem;">-</span>';
+        let htmlVariacion = '<span class="text-muted" style="font-size:0.65rem;">-</span>';
 
-        if (!isNaN(precioActual)) {
-            if (precioCatalogo <= 0) {
-                badgeVar = '<span class="badge bg-light text-muted border" style="font-size:0.6rem;">Libre</span>';
+        if (!isNaN(precioActual) && precioCatalogo > 0) {
+            let diferenciaUnitaria = precioActual - precioCatalogo;
+            let diferenciaLinea = diferenciaUnitaria * item.cantidad; // Lo que se gana/pierde en esta fila
+            
+            if (Math.abs(diferenciaUnitaria) < 0.005) {
+                htmlVariacion = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
             } else {
-                let diferencia = precioActual - precioCatalogo;
-                if (Math.abs(diferencia) < 0.005) {
-                    badgeVar = '<span class="badge bg-secondary" style="font-size:0.6rem;">Igual</span>';
+                let variacionPorcentaje = ((diferenciaUnitaria / precioCatalogo) * 100).toFixed(1);
+                
+                // Mostrar Porcentaje y Monto Dinero
+                if (diferenciaUnitaria < 0) {
+                    htmlVariacion = `
+                        <span class="badge bg-danger mb-1" style="font-size:0.65rem;">▼ ${variacionPorcentaje}%</span><br>
+                        <span class="text-danger fw-bold" style="font-size:0.7rem;">-${simboloActual} ${Math.abs(diferenciaLinea).toFixed(2)}</span>
+                    `;
                 } else {
-                    let variacion = ((diferencia / precioCatalogo) * 100).toFixed(1);
-                    badgeVar = diferencia < 0
-                        ? `<span class="badge bg-danger" style="font-size:0.6rem;">▼ ${variacion}%</span>`
-                        : `<span class="badge bg-success" style="font-size:0.6rem;">▲ +${variacion}%</span>`;
-                }                
-                // Acumulamos para el resumen total
-                diferenciaTotalAcumulada += (diferencia * item.cantidad);
-                hayComparables = true;
-            }
+                    htmlVariacion = `
+                        <span class="badge bg-success mb-1" style="font-size:0.65rem;">▲ +${variacionPorcentaje}%</span><br>
+                        <span class="text-success fw-bold" style="font-size:0.7rem;">+${simboloActual} ${diferenciaLinea.toFixed(2)}</span>
+                    `;
+                }
+            }                
+            variacionTotalItems += diferenciaLinea;
+            hayComparables = true;
+        } else if (precioCatalogo <= 0) {
+            htmlVariacion = '<span class="badge bg-light text-muted border" style="font-size:0.6rem;">Libre</span>';
         }
 
         tbody.append(`<tr>
             <td>${item.nombre} ${alertaStock} ${alertaEstado} ${badgeDesc}</td>
-            <td class="text-center fw-bold">${item.cantidad}</td>
-            <td class="text-end">${(!isNaN(precioActual) ? precioActual.toFixed(2) : '0.00')}</td>
-            <td class="text-center">${badgeVar}</td>
-            <td class="text-end fw-bold">${item.subtotal.toFixed(2)}</td>
+            <td class="text-center fw-bold align-middle">${item.cantidad}</td>
+            <td class="text-end align-middle">${(!isNaN(precioActual) ? precioActual.toFixed(2) : '0.00')}</td>
+            <td class="text-center align-middle lh-1">${htmlVariacion}</td>
+            <td class="text-end fw-bold align-middle">${item.subtotal.toFixed(2)}</td>
         </tr>`);
     });    
 
-    // --- 2. RESTAR EL DESCUENTO GLOBAL A LA DIFERENCIA TOTAL ---
-    // Extraemos el monto del descuento global del carrito (si existe, será un número negativo)
+    // --- 2. CÁLCULO DE DESGLOSE GLOBAL ---
     let textoDescGlobal = $('#lblMontoDescuento').text().replace(/[^\d.-]/g, '');
-    let montoDescGlobal = parseFloat(textoDescGlobal) || 0; 
-    
-    // Sumamos el descuento global (como ya es negativo, restará matemáticamente a la ganancia)
-    diferenciaTotalAcumulada += montoDescGlobal;
+    let montoDescGlobal = parseFloat(textoDescGlobal) || 0; // Viene negativo o 0
+    let impactoNeto = variacionTotalItems + montoDescGlobal;
 
-    // --- 3. MOSTRAR TARJETA DE DIFERENCIA TOTAL ---
+    // --- 3. RENDERIZAR TARJETA DE IMPACTO ---
     const $card = $('#cardDiferenciaTotal');
-    if (hayComparables && Math.abs(diferenciaTotalAcumulada) >= 0.01) {
-        if (diferenciaTotalAcumulada < 0) {
-            $card.css('background-color', '#f8d7da').show();
-            $('#lbl_diferencia_total_label').html('<i class="bi bi-arrow-down-circle-fill text-danger"></i> Descuento total vs. Lista:');
-            $('#lbl_diferencia_total_valor').html(`<span class="text-danger">- ${simboloActual} ${Math.abs(diferenciaTotalAcumulada).toFixed(2)}</span>`);
-        } else {
-            $card.css('background-color', '#d1e7dd').show();
-            $('#lbl_diferencia_total_label').html('<i class="bi bi-arrow-up-circle-fill text-success"></i> Sobreprecio total vs. Lista:');
-            $('#lbl_diferencia_total_valor').html(`<span class="text-success">+ ${simboloActual} ${diferenciaTotalAcumulada.toFixed(2)}</span>`);
-        }
+    if (hayComparables) {
+        $card.show();
+        let colorNeto = impactoNeto < 0 ? 'danger' : 'success';
+        let signoNeto = impactoNeto < 0 ? '-' : '+';
+        let bgCard = impactoNeto < 0 ? '#f8d7da' : '#d1e7dd';
+        
+        $card.css('background-color', bgCard);
+
+        // Construir un pequeño HTML de desglose
+        let htmlDesglose = `
+            <div class="d-flex justify-content-between border-bottom border-dark border-opacity-10 pb-1 mb-1">
+                <span class="text-muted small">Variación en Productos:</span>
+                <span class="${variacionTotalItems < 0 ? 'text-danger' : 'text-success'} small fw-bold">
+                    ${variacionTotalItems < 0 ? '-' : '+'}${simboloActual} ${Math.abs(variacionTotalItems).toFixed(2)}
+                </span>
+            </div>
+            <div class="d-flex justify-content-between border-bottom border-dark border-opacity-10 pb-1 mb-1">
+                <span class="text-muted small">Descuento Global Adicional:</span>
+                <span class="text-danger small fw-bold">
+                    -${simboloActual} ${Math.abs(montoDescGlobal).toFixed(2)}
+                </span>
+            </div>
+            <div class="d-flex justify-content-between mt-2">
+                <strong class="text-${colorNeto}">IMPACTO NETO VS LISTA:</strong>
+                <strong class="text-${colorNeto} fs-5">${signoNeto} ${simboloActual} ${Math.abs(impactoNeto).toFixed(2)}</strong>
+            </div>
+        `;
+        
+        $('#lbl_diferencia_total_label').html(''); // Ocultamos el label viejo
+        $('#lbl_diferencia_total_valor').html(htmlDesglose).removeClass('text-end').addClass('w-100');
     } else {
         $card.hide();
     }    
 
-    // --- 4. TOTALES Y DESCUENTO GLOBAL ---
+    // --- 4. TOTALES FINALES ---
     $('#res_subtotal_inicial').text($('#lblSubtotalInicial').text());
-
-    let valDescG = parseFloat($('#inputDescuento').val()) || 0;
-    if (valDescG > 0) {
+    if (Math.abs(montoDescGlobal) > 0) {
         let tipoDesc = $('#tipoDescuento').val();
-        let labelG = tipoDesc === 'PORCENTAJE' ? `Desc. Global (-${valDescG}%):` : `Desc. Global (Monto):`;
-
+        let labelG = tipoDesc === 'PORCENTAJE' ? `Desc. Global (-${$('#inputDescuento').val()}%):` : `Desc. Global (Monto):`;
         $('#res_lbl_desc_global').text(labelG);
         $('#res_val_desc_global').text($('#lblMontoDescuento').text());
         $('#div_res_descuento_global').removeClass('d-none').addClass('d-flex');
@@ -4129,12 +4139,9 @@ function mostrarModalResumen() {
     $('#res_igv').text($('#lblIGV').text());
     $('#res_total').text($('#lblTotal').text());
 
-    // --- 5. ABRIR MODAL CORRECTAMENTE (Sin duplicar memoria caché) ---
+    // --- 5. MOSTRAR MODAL ---
     const modalElement = document.getElementById('modalResumenVenta');
-    let modalInstancia = bootstrap.Modal.getInstance(modalElement);
-    if (!modalInstancia) {
-        modalInstancia = new bootstrap.Modal(modalElement);
-    }
+    let modalInstancia = bootstrap.Modal.getInstance(modalElement) || new bootstrap.Modal(modalElement);
     modalInstancia.show();
 }
 
