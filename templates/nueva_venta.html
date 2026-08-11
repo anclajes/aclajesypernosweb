@@ -2946,40 +2946,66 @@ function buscarClienteApi(force = false) {
         
         let nombreHtml = `${item.nombre} ${badgeEstadoHtml}`;
 
-        // --- 2. CÁLCULO DE DESCUENTOS Y PRECIOS TACHADOS (ULTRA MEJORADO) ---
-        let precioTachadoHtml = '';
-        let inputClass = 'editable-cell form-control-sm text-end'; 
+        // --- 2. COMPARATIVO DE PRECIO: SIEMPRE VISIBLE (Lista vs Vendedor) ---
+        let inputClass = 'editable-cell form-control-sm text-end';
 
         let tc_actual = parseFloat($('#inputTC').val()) || 1;
-        // Calculamos el precio de catálogo
         let precioCatalogo = (moneda === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
         precioCatalogo = Math.round((precioCatalogo + Number.EPSILON) * 1000000) / 1000000;
 
-        // SOLO SI EL PRODUCTO TIENE PRECIO DE CATÁLOGO (> 0) SE HACE LA COMPARACIÓN
-        if (precioCatalogo > 0 && item.precio !== precioCatalogo) {
-            
-            // Calculamos el % de diferencia con 1 decimal
-            let variacionPorcentaje = (((item.precio - precioCatalogo) / precioCatalogo) * 100).toFixed(1);
-            
-            if (item.precio < precioCatalogo) {
-                // Le bajó el precio -> Tachado + Etiqueta Roja
+        let precioActual = parseFloat(item.precio);
+        let precioTachadoHtml = '';
+
+        if (item.precio === '' || item.precio === null || isNaN(precioActual)) {
+            // CASO 1: Precio vacío / no ingresado todavía
+            precioTachadoHtml = `
+                <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                    <span class="badge bg-secondary" style="font-size:0.65rem;">
+                        <i class="bi bi-exclamation-circle"></i> Sin precio
+                    </span>
+                </div>`;
+            inputClass += ' border-secondary';
+
+        } else if (precioCatalogo <= 0) {
+            // CASO 2: Sin precio de catálogo (Fabricación, GLB o producto sin p_unidad)
+            precioTachadoHtml = `
+                <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                    <span class="badge bg-light text-muted border" style="font-size:0.65rem;">
+                        <i class="bi bi-unlock"></i> Precio Libre
+                    </span>
+                </div>`;
+
+        } else {
+            let diferencia = precioActual - precioCatalogo;
+
+            if (Math.abs(diferencia) < 0.005) {
+                // CASO 3: Precio = Lista (sin variación)
                 precioTachadoHtml = `
                     <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
-                        <del class="text-muted" style="font-size: 0.75rem;">${precioCatalogo.toFixed(2)}</del>
-                        <span class="badge bg-danger" style="font-size: 0.65rem;" title="Descuento aplicado">${variacionPorcentaje}%</span>
+                        <span class="text-muted" style="font-size:0.7rem;">Lista: ${precioCatalogo.toFixed(2)}</span>
+                        <span class="badge bg-secondary" style="font-size:0.65rem;">Igual</span>
                     </div>`;
-                inputClass += ' text-danger fw-bold border-danger bg-danger bg-opacity-10'; 
-            } else if (item.precio > precioCatalogo) {
-                // Le subió el precio -> Tachado + Etiqueta Verde
-                precioTachadoHtml = `
-                    <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
-                        <del class="text-muted" style="font-size: 0.75rem;">${precioCatalogo.toFixed(2)}</del>
-                        <span class="badge bg-success" style="font-size: 0.65rem;" title="Sobreprecio aplicado">+${variacionPorcentaje}%</span>
-                    </div>`;
-                inputClass += ' text-success fw-bold border-success bg-success bg-opacity-10'; 
+            } else {
+                // CASO 4: Precio con variación (sube o baja)
+                let variacion = ((diferencia / precioCatalogo) * 100).toFixed(1);
+
+                if (diferencia < 0) {
+                    precioTachadoHtml = `
+                        <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                            <del class="text-muted" style="font-size:0.75rem;">${precioCatalogo.toFixed(2)}</del>
+                            <span class="badge bg-danger" style="font-size:0.65rem;" title="Descuento aplicado">▼ ${variacion}%</span>
+                        </div>`;
+                    inputClass += ' text-danger fw-bold border-danger bg-danger bg-opacity-10';
+                } else {
+                    precioTachadoHtml = `
+                        <div class="d-flex justify-content-end align-items-center gap-1 mb-1">
+                            <del class="text-muted" style="font-size:0.75rem;">${precioCatalogo.toFixed(2)}</del>
+                            <span class="badge bg-success" style="font-size:0.65rem;" title="Sobreprecio aplicado">▲ +${variacion}%</span>
+                        </div>`;
+                    inputClass += ' text-success fw-bold border-success bg-success bg-opacity-10';
+                }
             }
         }
-        // Si precioCatalogo es 0, inputClass se queda normal y precioTachadoHtml se queda vacío.
 
         let badgeDescHtml = '';
         let labelDesc = item.desc_label || '';
