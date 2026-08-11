@@ -198,6 +198,9 @@ class OrderDetail(db.Model):
     
     cantidad = db.Column(db.Integer, nullable=False)
     precio_aplicado = db.Column(db.Float, nullable=False)
+
+    precio_catalogo_sistema = db.Column(db.Float, nullable=True, default=0.0)
+
     tipo_precio_usado = db.Column(db.String(50))
     subtotal = db.Column(db.Float, nullable=False)
 

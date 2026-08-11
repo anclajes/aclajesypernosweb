@@ -1263,16 +1263,45 @@ def nueva_venta():
             for item in data['items']:
                 tipo_item = item.get('tipo', 'PRODUCTO') 
                 
+                # ==========================================================
+                # ---> NUEVO: CAPTURAR EL PRECIO ORIGINAL DEL SISTEMA <---
+                # ==========================================================
+                precio_original_seguro = 0.0
+                prod_db_temp = None
+                
+                # Buscamos el producto en la BD (Mantenemos esto por si necesitas el ID)
+                if tipo_item == 'PRODUCTO':
+                    prod_db_temp = Product.query.get(item['id'])
+                elif tipo_item == 'FABRICACION':
+                    sku_buscado = item.get('sku')
+                    if sku_buscado:
+                        prod_db_temp = Product.query.filter_by(sku=sku_buscado).first()
+                        
+                # Si el producto existe, capturamos su precio base como "Plan B"
+                if prod_db_temp and prod_db_temp.precio_unidad:
+                    try:
+                        precio_original_seguro = float(prod_db_temp.precio_unidad)
+                    except ValueError:
+                        precio_original_seguro = 0.0 
+                # ==========================================================
+                
+                # --- AQUÍ ESTÁ EL CAMBIO CLAVE ---
                 detalle = OrderDetail(
                     order_id=nueva_orden.id,
                     item_type=tipo_item, 
                     cantidad=int(item['cantidad']),
-                    precio_aplicado=float(item['precio']),
-                    subtotal=float(item['subtotal']), # Guardamos el visual, pero el header ya cuadra
+                    
+                    # 1. Usamos el precio final exacto que mandó el frontend (o caemos al 'precio' normal por seguridad)
+                    precio_aplicado=float(item.get('precio_final_venta', item.get('precio', 0))),
+                    
+                    # 2. Usamos el precio del catálogo YA CALCULADO con el Tipo de Cambio desde el JS
+                    precio_catalogo_sistema=float(item.get('precio_catalogo_sistema', precio_original_seguro)), 
+                    
+                    subtotal=float(item['subtotal']), 
                     tipo_precio_usado=item.get('tipo_precio', 'Manual'),
 
                     # --- GUARDADO DE DESCUENTOS ---
-                    precio_base=float(item.get('precioBase', item['precio'])),
+                    precio_base=float(item.get('precioBase', item.get('precio', 0))),
                     desc_tipo=item.get('desc_tipo', ''),
                     desc_valor=float(item.get('desc_valor', 0.0)),
                     desc_label=item.get('desc_label', '')
@@ -1283,12 +1312,8 @@ def nueva_venta():
                     detalle.product_id = item['id']
                 
                 elif tipo_item == 'FABRICACION':
-                    # Intentamos buscar el Servicio por su SKU
-                    sku_buscado = item.get('sku')
-                    if sku_buscado:
-                        prod_servicio = Product.query.filter_by(sku=sku_buscado).first()
-                        if prod_servicio:
-                            detalle.product_id = prod_servicio.id 
+                    if prod_db_temp: # Usamos la variable que ya buscamos arriba
+                        detalle.product_id = prod_db_temp.id 
                     
                     # Guardamos los textos
                     detalle.nombre_personalizado = item.get('descripcion_glb', item['nombre'])
@@ -3422,16 +3447,40 @@ def actualizar_venta():
         orden.gerente_nombre = None
              
         # 4. ACTUALIZAR ITEMS (Estrategia: Borrar viejos y crear nuevos)
-        # Esto es lo más limpio para evitar errores de duplicados en items
         OrderDetail.query.filter_by(order_id=orden.id).delete()
         
         for item in data['items']:
             tipo_item = item.get('tipo', 'PRODUCTO')
+            
+            # ==========================================================
+            # ---> NUEVO: CAPTURAR EL PRECIO ORIGINAL DEL SISTEMA <---
+            # ==========================================================
+            precio_original_seguro = 0.0
+            prod_db_temp = None
+            
+            if tipo_item == 'PRODUCTO':
+                prod_db_temp = Product.query.get(item['id'])
+            elif tipo_item == 'FABRICACION':
+                sku_buscado = item.get('sku')
+                if sku_buscado:
+                    prod_db_temp = Product.query.filter_by(sku=sku_buscado).first()
+                    
+            if prod_db_temp and prod_db_temp.precio_unidad:
+                try:
+                    precio_original_seguro = float(prod_db_temp.precio_unidad)
+                except ValueError:
+                    precio_original_seguro = 0.0
+            # ==========================================================
+
             detalle = OrderDetail(
                 order_id=orden.id,
                 item_type=tipo_item,
                 cantidad=int(item['cantidad']),
                 precio_aplicado=float(item['precio']),
+                
+                # ---> GUARDAMOS LA FOTO DEL PRECIO ORIGINAL AQUÍ <---
+                precio_catalogo_sistema=precio_original_seguro,
+                
                 subtotal=float(item['subtotal']),
                 tipo_precio_usado=item.get('tipo_precio', 'Manual'),
                     
@@ -3445,6 +3494,8 @@ def actualizar_venta():
             if tipo_item == 'PRODUCTO':
                 detalle.product_id = item['id']
             elif tipo_item in ['FABRICACION', 'GLB']:
+                 if tipo_item == 'FABRICACION' and prod_db_temp:
+                     detalle.product_id = prod_db_temp.id
                  detalle.nombre_personalizado = item.get('descripcion_glb', item['nombre'])
                  detalle.nombre_personalizado_titulo = item.get('titulo_glb', '')
             
@@ -4638,25 +4689,19 @@ def fix_render_db():
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 
-@app.route('/fix_cliente_ubigeo')
-def fix_cliente_ubigeo():
+@app.route('/fix_db_precios')
+def fix_db_precios():
     try:
         from sqlalchemy import text
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             
-            try: conn.execute(text('ALTER TABLE client ADD COLUMN ubigeo VARCHAR(10)'))
-            except Exception as e: print(f"Aviso ubigeo: {e}")
-                
-            try: conn.execute(text('ALTER TABLE client ADD COLUMN distrito VARCHAR(100)'))
-            except Exception as e: print(f"Aviso distrito: {e}")
-                
-            try: conn.execute(text('ALTER TABLE client ADD COLUMN provincia VARCHAR(100)'))
-            except Exception as e: print(f"Aviso provincia: {e}")
-                
-            try: conn.execute(text('ALTER TABLE client ADD COLUMN departamento VARCHAR(100)'))
-            except Exception as e: print(f"Aviso departamento: {e}")
+            # Intentamos agregar la nueva columna a la tabla order_detail
+            try: 
+                conn.execute(text('ALTER TABLE order_detail ADD COLUMN precio_catalogo_sistema FLOAT DEFAULT 0.0'))
+            except Exception as e: 
+                print(f"Aviso precio_catalogo_sistema: {e}")
 
-        return "<h2>✅ Base de datos de clientes actualizada correctamente (Ubigeo, Distrito, Provincia, Departamento).</h2>"
+        return "<h2>✅ Base de datos actualizada: Columna 'precio_catalogo_sistema' agregada a order_detail.</h2>"
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 

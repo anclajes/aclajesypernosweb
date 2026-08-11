@@ -417,10 +417,17 @@
                         <label class="small fw-bold text-nowrap" style="color: var(--theme-primary);">P. Unit (<span id="lblMonedaUnit">USD</span>)</label>
                         <div class="input-group input-group-sm shadow-sm border rounded" style="border-color: var(--theme-primary) !important;">
                             <span class="input-group-text bg-light border-0 px-1 px-sm-2" id="simboloMonedaInput" style="color: var(--theme-primary);">$</span>
+
+                            <!-- AGREGADO: onkeyup="compararPrecioAlerta()" -->
                             <input type="number" id="precioManualInput" class="form-control fw-bold text-end border-0 px-1" 
-                                   step="any" onkeydown="return filtroTeclas(event, 'decimal')" oninput="validarEntradaString(this, 6)">
-                            <input type="hidden" id="precioBaseHidden"> 
+                                step="any" onkeydown="return filtroTeclas(event, 'decimal')" 
+                                oninput="validarEntradaString(this, 6);" onkeyup="compararPrecioAlerta()">
+                                
+                            <input type="hidden" id="precioBaseHidden">
                         </div>
+                        
+                        <!-- NUEVO: Aquí aparecerá la alerta dinámica (Sube/Baja) -->
+                        <div id="alertaPrecioUnitario" class="text-end mt-1 fw-bold" style="font-size: 0.65rem; min-height: 15px;"></div>
                     </div>
                     <div class="col-12 col-sm-5 col-md-2 mt-3 mt-sm-0 d-flex flex-column text-center bg-white border rounded p-1 shadow-sm">
                         <small class="text-muted fw-bold" style="font-size: 0.65rem;">SUBTOTAL LÍMITE</small>
@@ -2288,21 +2295,34 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         
         let itemExistente = carrito.find(item => item.id === idProd && item.tipo === 'PRODUCTO');
         
+        /* --- REEMPLAZA LA PARTE DONDE SE CREA EL OBJETO EN EL CASO A --- */
         if (itemExistente) { 
             itemExistente.cantidad += cant; 
+            // Actualizamos al último precio colocado
+            itemExistente.precio = precio; 
             itemExistente.subtotal = parseFloat((itemExistente.cantidad * itemExistente.precio).toFixed(2)); 
         } else { 
             itemParaCarrito = { 
-                id: idProd, sku: opt.data('sku'), 
-                nombre: nombreLimpio, // <-- GUARDAMOS NOMBRE LIMPIO
-                estado: estadoProd,   // <-- GUARDAMOS EL ESTADO EN MEMORIA
-                stock: stockProd, cantidad: cant, precio: precio, precioBase: precioBase, 
+                id: idProd, 
+                sku: opt.data('sku'), 
+                nombre: nombreLimpio, 
+                estado: estadoProd, 
+                stock: stockProd, 
+                cantidad: cant, 
+                // --- AQUÍ ESTÁ LA MEJORA CLAVE ---
+                precioBase: precioBase, // Siempre en USD (uso interno para cambio de moneda)
+                precio_catalogo_sistema: (moneda === 'PEN') ? (precioBase * tc) : precioBase, // Oficial en la moneda actual
+                precio: precio, // El precio final que digitó el usuario
+                // ----------------------------------
                 subtotal: parseFloat((cant * precio).toFixed(2)), 
-                tipo_precio: 'Manual', tipo: 'PRODUCTO',
+                tipo_precio: (precio !== ((moneda === 'PEN') ? (precioBase * tc) : precioBase)) ? 'Modificado' : 'Oficial', 
+                tipo: 'PRODUCTO',
                 um: unidadMedida,
-                desc_tipo: '', desc_valor: 0, desc_label: ''
+                desc_tipo: '', 
+                desc_valor: 0, 
+                desc_label: ''
             }; 
-            carrito.push(itemParaCarrito); 
+            carrito.push(itemParaCarrito);
         }
     }
 
@@ -2922,15 +2942,30 @@ function buscarClienteApi(force = false) {
         
         let nombreHtml = `${item.nombre} ${badgeEstadoHtml}`;
 
-        // --- 2. CÁLCULO DE DESCUENTOS Y PRECIOS TACHADOS ---
+        // --- 2. CÁLCULO DE DESCUENTOS Y PRECIOS TACHADOS (MEJORADO) ---
         let precioTachadoHtml = '';
         let inputClass = 'editable-cell';
-        
-        if (item.desc_valor > 0) {
-            let tc_actual = parseFloat($('#inputTC').val()) || 1;
-            let precioOriginal = (moneda === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
-            precioTachadoHtml = `<del class="text-muted d-block" style="font-size: 0.75rem; margin-bottom: -2px;">${precioOriginal.toFixed(2)}</del>`;
-            inputClass = 'editable-cell text-danger fw-bold border-danger bg-danger bg-opacity-10'; 
+
+        let tc_actual = parseFloat($('#inputTC').val()) || 1;
+        // Calculamos el precio de catálogo en la moneda actual
+        let precioCatalogo = (moneda === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
+        // Redondeamos para evitar errores de coma flotante en JS
+        precioCatalogo = Math.round((precioCatalogo + Number.EPSILON) * 1000000) / 1000000;
+
+        // Verificar si el precio fue alterado (por descuento de botón O por escritura manual)
+        if (item.desc_valor > 0 || item.precio !== precioCatalogo) {
+            
+            // Mostrar siempre el precio de catálogo como referencia (Tachado y pequeñito arriba)
+            precioTachadoHtml = `<del class="text-muted d-block" title="Precio Catálogo Oficial" style="font-size: 0.75rem; margin-bottom: -2px;">${precioCatalogo.toFixed(2)}</del>`;
+            
+            // Pintar la celda dependiendo de si ganó o perdió margen
+            if (item.precio < precioCatalogo) {
+                // Le bajó el precio (Descuento/Pérdida) -> Rojo
+                inputClass = 'editable-cell text-danger fw-bold border-danger bg-danger bg-opacity-10'; 
+            } else if (item.precio > precioCatalogo) {
+                // Le subió el precio (Sobreprecio/Ganancia) -> Verde
+                inputClass = 'editable-cell text-success fw-bold border-success bg-success bg-opacity-10'; 
+            }
         }
 
         let badgeDescHtml = '';
@@ -3440,6 +3475,20 @@ function recalcularCarritoPorMoneda() {
             diasHabilesValor = '0'; // Lo convertimos a 0 para guardar en BD
         }
 
+                // --- ANTES DE CREAR EL PAYLOAD, PREPARAMOS LOS ITEMS ---
+        // Mapeamos el carrito para asegurarnos de que la BD reciba ambos precios explícitamente
+        let itemsParaBD = carrito.map(item => {
+            let tc_actual = parseFloat($('#inputTC').val()) || 1;
+            let precioCatalogoActual = ($('#selectMoneda').val() === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
+
+            return {
+                ...item,
+                precio_catalogo_sistema: parseFloat(precioCatalogoActual.toFixed(6)), // Precio dictado por el sistema
+                precio_final_venta: parseFloat(item.precio.toFixed(6)),               // Precio final con el que se vendió
+                diferencia_monto: parseFloat((item.precio - precioCatalogoActual).toFixed(6)) // Positivo (ganancia) o Negativo (descuento)
+            };
+        });
+
         // 6. CONSTRUIR PAYLOAD CON LOS 3 CAMPOS NUEVOS
         const payload = {
             order_id: orderIdEditing, 
@@ -3464,7 +3513,7 @@ function recalcularCarritoPorMoneda() {
             
             moneda: $('#selectMoneda').val(), 
             tc: $('#inputTC').val(), 
-            items: carrito, 
+            items: itemsParaBD, 
             
             subtotal: subtotalNeto, 
             igv: igv, 
@@ -4049,6 +4098,20 @@ function recalcularCarritoPorMoneda() {
             fechaFijaValor = $('#inputFechaEntrega').val();
         }
 
+                // --- ANTES DE CREAR EL PAYLOAD, PREPARAMOS LOS ITEMS ---
+        // Mapeamos el carrito para asegurarnos de que la BD reciba ambos precios explícitamente
+        let itemsParaBD = carrito.map(item => {
+            let tc_actual = parseFloat($('#inputTC').val()) || 1;
+            let precioCatalogoActual = ($('#selectMoneda').val() === 'PEN') ? (item.precioBase * tc_actual) : item.precioBase;
+
+            return {
+                ...item,
+                precio_catalogo_sistema: parseFloat(precioCatalogoActual.toFixed(6)), // Precio dictado por el sistema
+                precio_final_venta: parseFloat(item.precio.toFixed(6)),               // Precio final con el que se vendió
+                diferencia_monto: parseFloat((item.precio - precioCatalogoActual).toFixed(6)) // Positivo (ganancia) o Negativo (descuento)
+            };
+        });
+
         // 4. CONSTRUIR PAYLOAD (AQUÍ ESTÁ EL TRUCO PARA QUE PYTHON LO GUARDE)
         const payload = {
             order_id: orderIdEditing, 
@@ -4080,7 +4143,7 @@ function recalcularCarritoPorMoneda() {
             
             moneda: $('#selectMoneda').val(), 
             tc: $('#inputTC').val(), 
-            items: carrito, 
+            items: itemsParaBD, 
             
             subtotal: subtotalNeto, 
             igv: igv, 
@@ -4340,6 +4403,34 @@ function seleccionarClienteDeDirectorio(ruc, nombre) {
             buscarClienteApi(false);
         }, 100);
     }
+
+// --- FUNCIÓN QUE COMPARA EL PRECIO DIGITADO VS EL PRECIO ORIGINAL ---
+function compararPrecioAlerta() {
+    let base = parseFloat(document.getElementById('precioBaseHidden').value) || 0;
+    let actual = parseFloat(document.getElementById('precioManualInput').value) || 0;
+    let alertaDiv = document.getElementById('alertaPrecioUnitario');
+    
+    // Si el producto no tenía precio en la base de datos (Ej: 0.0)
+    if (base === 0) {
+        alertaDiv.innerHTML = `<span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Sin Precio Lista</span>`;
+        return;
+    }
+    
+    // Si el vendedor subió el precio
+    if (actual > base) {
+        let porcentaje = (((actual - base) / base) * 100).toFixed(1);
+        alertaDiv.innerHTML = `<span class="text-success"><i class="bi bi-arrow-up-circle-fill"></i> +${porcentaje}% (Base: ${base.toFixed(2)})</span>`;
+    } 
+    // Si el vendedor bajó el precio (Descuento manual)
+    else if (actual < base) {
+        let porcentaje = (((base - actual) / base) * 100).toFixed(1);
+        alertaDiv.innerHTML = `<span class="text-danger"><i class="bi bi-arrow-down-circle-fill"></i> -${porcentaje}% (Base: ${base.toFixed(2)})</span>`;
+    } 
+    // Si lo deja al precio oficial
+    else {
+        alertaDiv.innerHTML = `<span class="text-muted"><i class="bi bi-check-circle-fill"></i> = Precio Oficial</span>`;
+    }
+}
 
     // --- REDIRECCIÓN A SUNAT (VERSIÓN DEFINITIVA Y ESTABLE) ---
     window.abrirPortalSunat = function() {
