@@ -137,11 +137,17 @@
             <tbody class="small">
                 {% for o in ordenes %}
                     <tr class="{% if o.estado == 'Observado' %}table-danger border-start border-5 border-danger{% endif %}">
-                        <td class="ps-4 fw-bold">
-                            {% if o.estado == 'Observado' %}
-                                <i class="bi bi-exclamation-triangle-fill text-danger me-1 blink-anim" title="Devuelto por Gerencia o Almacén"></i>
-                            {% endif %}
-                            {{ "%05d"|format(o.id) }}
+                        <!-- BLOQUE 1 REEMPLAZADO: Código + Cantidad de Ítems -->
+                        <td class="ps-4">
+                            <div class="fw-bold fs-6">
+                                {% if o.estado == 'Observado' %}
+                                    <i class="bi bi-exclamation-triangle-fill text-danger me-1 blink-anim" title="Devuelto por Gerencia o Almacén"></i>
+                                {% endif %}
+                                {{ "%05d"|format(o.id) }}
+                            </div>
+                            <div class="text-muted mt-1" style="font-size: 0.7rem;" title="Cantidad de productos distintos">
+                                <i class="bi bi-box-seam"></i> {{ o.details|length }} Ítem(s)
+                            </div>
                         </td>
                         <td>
                             <div class="d-flex flex-column">
@@ -213,8 +219,47 @@
                             {% endif %}
                         </td>
                         <td class="text-muted"><i class="bi bi-person"></i> {{ o.vendedor.username }}</td>
-                        <td class="text-end fw-bold font-monospace">
-                            {{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(o.total) }}
+                        <!-- BLOQUE 2 REEMPLAZADO: Total + Badge de Impacto (Radar) -->
+                        <td class="text-end">
+                            <div class="fw-bold font-monospace fs-6">
+                                {{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(o.total) }}
+                            </div>
+                            
+                            <!-- CÁLCULO INTERNO CON JINJA (Sin tocar backend) -->
+                            {% set vars = namespace(impacto_items=0, hay_base=false) %}
+                            {% for d in o.details %}
+                                {% if d.precio_catalogo_sistema and d.precio_catalogo_sistema > 0 %}
+                                    {% set vars.hay_base = true %}
+                                    {% set dif = (d.precio_aplicado - d.precio_catalogo_sistema) * d.cantidad %}
+                                    {% set vars.impacto_items = vars.impacto_items + dif %}
+                                {% endif %}
+                            {% endfor %}
+                            
+                            <!-- Restamos el descuento global (si lo hubo) -->
+                            {% set impacto_neto = vars.impacto_items - o.descuento_total %}
+                            
+                            <!-- MOSTRAR EL RESULTADO VISUAL -->
+                            <div class="mt-1">
+                                {% if vars.hay_base %}
+                                    {% if impacto_neto < -0.01 %}
+                                        <span class="badge bg-danger shadow-sm fw-normal" style="font-size: 0.65rem;" title="El vendedor redujo los precios o dio descuentos">
+                                            ▼ -{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(impacto_neto|abs) }}
+                                        </span>
+                                    {% elif impacto_neto > 0.01 %}
+                                        <span class="badge bg-success shadow-sm fw-normal" style="font-size: 0.65rem;" title="El vendedor logró cobrar un sobreprecio">
+                                            ▲ +{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(impacto_neto) }}
+                                        </span>
+                                    {% else %}
+                                        <span class="badge bg-secondary text-white fw-normal" style="font-size: 0.65rem;" title="Todos los precios respetan la lista">
+                                            = P. Oficial
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge bg-light text-muted border fw-normal" style="font-size: 0.65rem;">
+                                        P. Libre
+                                    </span>
+                                {% endif %}
+                            </div>
                         </td>
                         <td class="text-center">
                             <span class="badge 
