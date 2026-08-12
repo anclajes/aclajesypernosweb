@@ -1306,6 +1306,10 @@ def nueva_venta():
                 if data.get('cliente_distrito'): cliente.distrito = data.get('cliente_distrito')
                 if data.get('cliente_provincia'): cliente.provincia = data.get('cliente_provincia')
                 if data.get('cliente_departamento'): cliente.departamento = data.get('cliente_departamento')
+                # --- NUEVO: solo pisa si viene con dato (no borra lo ya guardado) ---
+                if data.get('cliente_area'): cliente.area = data.get('cliente_area')
+                if data.get('cliente_correo'): cliente.correo = data.get('cliente_correo')
+                if data.get('cliente_rubro'): cliente.rubro = data.get('cliente_rubro')
             
             db.session.flush() # Para asegurar que tenemos el ID del cliente
 
