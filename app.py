@@ -383,6 +383,7 @@ def actualizar_telefono_cliente():
     area = request.form.get('area', '').strip()
     correo = request.form.get('correo', '').strip()
     rubro = request.form.get('rubro', '').strip()
+    atencion = request.form.get('atencion', '').strip()
     
     cliente = Client.query.filter_by(documento=doc).first()
     if cliente:
@@ -390,6 +391,7 @@ def actualizar_telefono_cliente():
         cliente.area = area
         cliente.correo = correo
         cliente.rubro = rubro
+        cliente.atencion = atencion
         cliente.last_updated = hora_peru()
         cliente.updated_by = session.get('username', 'Sistema')
         db.session.commit()
@@ -1063,7 +1065,8 @@ def buscar_cliente(documento):
             'ubigeo': cliente.ubigeo,
             'distrito': cliente.distrito,
             'provincia': cliente.provincia,
-            'departamento': cliente.departamento
+            'departamento': cliente.departamento,
+            'atencion': cliente.atencion if cliente.atencion else ''
         }
     return {'encontrado': False}
 
@@ -3222,6 +3225,7 @@ def buscar_clientes_db():
             'area': c.area or '',
             'correo': c.correo or '',
             'rubro': c.rubro or '',
+            'atencion': c.atencion or '',
             
             'updated': c.last_updated.strftime('%d/%m/%Y')
         })
