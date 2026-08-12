@@ -2770,6 +2770,7 @@ function buscarClienteApi(force = false) {
                 if (data.area) $('#cli_area').val(data.area);
                 if (data.correo) $('#cli_correo').val(data.correo);
                 if (data.rubro) $('#cli_rubro').val(data.rubro);
+                $('#cli_atte').val(data.atencion || data.contacto || '');
                 
                 $('#hidden_estado').val(data.estado);
                 $('#hidden_condicion').val(data.condicion);
