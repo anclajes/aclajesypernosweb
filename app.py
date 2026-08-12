@@ -757,13 +757,13 @@ def exportar_historial_excel():
     else:
         query = query.filter(Order.estado == estado_filtro)
     
-    # --- PRIVACIDAD: vendedor solo ve las suyas ---
+    # --- PRIVACIDAD ---
     if rol == 'vendedor':
         query = query.filter(Order.vendedor_id == user_id)
     elif request.args.get('solo_mias') == 'on':
         query = query.filter(Order.vendedor_id == user_id)
     
-    # --- MISMOS FILTROS QUE historial_ventas ---
+    # --- MISMOS FILTROS DE LA PANTALLA ---
     busqueda = request.args.get('busqueda')
     if busqueda:
         term_id = busqueda
@@ -804,39 +804,68 @@ def exportar_historial_excel():
         flash('No hay registros para exportar con los filtros seleccionados.')
         return redirect(url_for('historial_ventas', vista='historial'))
     
-    # --- CONSTRUCCIÓN DE DATOS ---
-    resumen_data = []
+    # =========================================================
+    # HOJA 1: BILLETERA DE CLIENTES (agrupado, un cliente = una fila)
+    # =========================================================
+    clientes_map = {}  # documento -> datos acumulados
+    
+    for o in ordenes:
+        c = o.cliente
+        if not c:
+            continue
+        doc = c.documento
+        
+        if doc not in clientes_map:
+            clientes_map[doc] = {
+                'RUC/DNI': c.documento,
+                'Razón Social': c.nombre,
+                'Rubro': c.rubro or '-',
+                'Área / Contacto': c.area or '-',
+                'Correo': c.correo or '-',
+                'Teléfono': c.telefono or '-',
+                'Dirección': c.direccion or '-',
+                'Distrito': c.distrito or '-',
+                'Provincia': c.provincia or '-',
+                'Departamento': c.departamento or '-',
+                'Estado SUNAT': c.estado or '-',
+                'Condición SUNAT': c.condicion or '-',
+                'N° Cotizaciones (filtro actual)': 0,
+                'Total Vendido (S/)': 0.0,
+                'Total Vendido ($)': 0.0,
+                'Primera Compra': o.fecha,
+                'Última Compra': o.fecha,
+                'Última Actualización Ficha': c.last_updated.strftime('%d/%m/%Y') if c.last_updated else '-'
+            }
+        
+        reg = clientes_map[doc]
+        reg['N° Cotizaciones (filtro actual)'] += 1
+        if o.moneda == 'PEN':
+            reg['Total Vendido (S/)'] += o.total
+        else:
+            reg['Total Vendido ($)'] += o.total
+        if o.fecha < reg['Primera Compra']:
+            reg['Primera Compra'] = o.fecha
+        if o.fecha > reg['Última Compra']:
+            reg['Última Compra'] = o.fecha
+    
+    billetera_data = []
+    for doc, reg in clientes_map.items():
+        reg['Primera Compra'] = reg['Primera Compra'].strftime('%d/%m/%Y')
+        reg['Última Compra'] = reg['Última Compra'].strftime('%d/%m/%Y')
+        reg['Total Vendido (S/)'] = round(reg['Total Vendido (S/)'], 2)
+        reg['Total Vendido ($)'] = round(reg['Total Vendido ($)'], 2)
+        billetera_data.append(reg)
+    
+    # Ordenar por mayor cantidad de compras (el mejor cliente primero)
+    billetera_data.sort(key=lambda x: x['N° Cotizaciones (filtro actual)'], reverse=True)
+    
+    # =========================================================
+    # HOJA 2: DETALLE DE VENTAS (una fila por producto vendido)
+    # =========================================================
     detalle_data = []
     
     for o in ordenes:
-        simbolo = "S/" if o.moneda == 'PEN' else "$"
-        
-        resumen_data.append({
-            'Código': f"{o.id:05d}",
-            'Fecha': o.fecha.strftime('%d/%m/%Y'),
-            'Hora': o.fecha.strftime('%H:%M'),
-            'Estado': o.estado,
-            'Vendedor': o.vendedor.nombre_completo if o.vendedor else '-',
-            'Cliente': o.cliente.nombre if o.cliente else '-',
-            'RUC/DNI': o.cliente.documento if o.cliente else '-',
-            'Departamento': o.cliente.departamento or '-',
-            'Provincia': o.cliente.provincia or '-',
-            'Distrito': o.cliente.distrito or '-',
-            'Tipo Entrega': o.tipo_entrega or '-',
-            'Dirección Entrega': o.direccion_envio or '-',
-            'Fecha Entrega': o.fecha_entrega.strftime('%d/%m/%Y') if o.fecha_entrega else '-',
-            'Días Hábiles': o.dias_habiles_entrega if o.dias_habiles_entrega is not None else '-',
-            'Agencia': o.agencia or '-',
-            'Condición Pago': o.condicion_pago or '-',
-            'O/C Cliente': o.orden_compra or '-',
-            'Moneda': o.moneda,
-            'Subtotal': o.subtotal,
-            'Descuento': o.descuento_total,
-            'IGV': o.igv,
-            'Total': o.total,
-            'Cant. Items': len(o.details)
-        })
-        
+        c = o.cliente
         for d in o.details:
             nombre_item = d.product.nombre if d.product else (d.nombre_personalizado or 'Item')
             sku_item = d.product.sku if d.product else (d.item_type or '-')
@@ -844,38 +873,47 @@ def exportar_historial_excel():
             
             detalle_data.append({
                 'Código Cotización': f"{o.id:05d}",
-                'Fecha': o.fecha.strftime('%d/%m/%Y'),
+                'Fecha Venta': o.fecha.strftime('%d/%m/%Y'),
+                'Estado': o.estado,
                 'Vendedor': o.vendedor.nombre_completo if o.vendedor else '-',
-                'Cliente': o.cliente.nombre if o.cliente else '-',
+                'Cliente': c.nombre if c else '-',
+                'RUC/DNI Cliente': c.documento if c else '-',
+                'Distrito': c.distrito if c else '-',
+                'Provincia': c.provincia if c else '-',
+                'Departamento': c.departamento if c else '-',
                 'SKU': sku_item,
-                'Descripción': nombre_item,
-                'Tipo': d.item_type,
+                'Descripción Producto': nombre_item,
+                'Tipo Item': d.item_type,
                 'Cantidad': d.cantidad,
                 'P. Lista (unit)': round(precio_lista, 2),
                 'P. Vendido (unit)': round(d.precio_aplicado, 2),
                 'Variación %': round(((d.precio_aplicado - precio_lista) / precio_lista * 100), 1) if precio_lista > 0 else '',
                 'Subtotal Línea': round(d.subtotal, 2),
-                'Moneda': o.moneda
+                'Moneda': o.moneda,
+                'Total Cotización': round(o.total, 2),
+                'Condición Pago': o.condicion_pago or '-',
+                'Tipo Entrega': o.tipo_entrega or '-'
             })
     
-    df_resumen = pd.DataFrame(resumen_data)
+    df_billetera = pd.DataFrame(billetera_data)
     df_detalle = pd.DataFrame(detalle_data)
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_resumen.to_excel(writer, index=False, sheet_name='Resumen Ventas')
-        df_detalle.to_excel(writer, index=False, sheet_name='Detalle Productos')
+        df_billetera.to_excel(writer, index=False, sheet_name='Billetera Clientes')
+        df_detalle.to_excel(writer, index=False, sheet_name='Detalle Ventas')
         
         workbook = writer.book
         formato_header = workbook.add_format({
             'bold': True, 'bg_color': '#0B3D91', 'font_color': 'white', 'border': 1
         })
+        formato_num = workbook.add_format({'num_format': '#,##0.00'})
         
-        for sheet_name, df in [('Resumen Ventas', df_resumen), ('Detalle Productos', df_detalle)]:
+        for sheet_name, df in [('Billetera Clientes', df_billetera), ('Detalle Ventas', df_detalle)]:
             ws = writer.sheets[sheet_name]
             for idx, col in enumerate(df.columns):
                 max_len = max(df[col].astype(str).map(len).max() if len(df) > 0 else 10, len(col)) + 2
-                ws.set_column(idx, idx, min(max_len, 45))
+                ws.set_column(idx, idx, min(max_len, 40))
                 ws.write(0, idx, col, formato_header)
             ws.freeze_panes(1, 0)
             ws.autofilter(0, 0, len(df), len(df.columns) - 1)
@@ -883,7 +921,7 @@ def exportar_historial_excel():
     output.seek(0)
     
     sufijo_estado = 'Entregados' if estado_filtro == 'Entregado' else 'Todos'
-    nombre_archivo = f"Reporte_Ventas_{sufijo_estado}_{hora_peru().strftime('%Y%m%d_%H%M')}.xlsx"
+    nombre_archivo = f"Reporte_Comercial_{sufijo_estado}_{hora_peru().strftime('%Y%m%d_%H%M')}.xlsx"
     
     return send_file(
         output,
