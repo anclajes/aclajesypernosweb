@@ -271,6 +271,11 @@ def consulta_documento():
             'distrito': getattr(cliente_db, 'distrito', ''),
             'provincia': getattr(cliente_db, 'provincia', ''),
             'departamento': getattr(cliente_db, 'departamento', ''),
+
+                        # --- NUEVO: DATOS COMERCIALES MANUALES ---
+            'area': getattr(cliente_db, 'area', '') or '',
+            'correo': getattr(cliente_db, 'correo', '') or '',
+            'rubro': getattr(cliente_db, 'rubro', '') or '',
             
             # DATOS DE AUDITORÍA
             'last_updated': cliente_db.last_updated.strftime('%d/%m %H:%M'),
@@ -375,10 +380,18 @@ def actualizar_telefono_cliente():
     
     doc = request.form.get('documento')
     tel = request.form.get('telefono')
+    area = request.form.get('area', '').strip()
+    correo = request.form.get('correo', '').strip()
+    rubro = request.form.get('rubro', '').strip()
     
     cliente = Client.query.filter_by(documento=doc).first()
     if cliente:
         cliente.telefono = tel
+        cliente.area = area
+        cliente.correo = correo
+        cliente.rubro = rubro
+        cliente.last_updated = hora_peru()
+        cliente.updated_by = session.get('username', 'Sistema')
         db.session.commit()
         return {'status': 'success'}
     
@@ -1276,6 +1289,9 @@ def nueva_venta():
                     distrito=data.get('cliente_distrito'),
                     provincia=data.get('cliente_provincia'),
                     departamento=data.get('cliente_departamento'),
+                    area=data.get('cliente_area'),
+                    correo=data.get('cliente_correo'),
+                    rubro=data.get('cliente_rubro'),
                     estado='ACTIVO', condicion='HABIDO', last_updated=hora_peru()
                 )
                 db.session.add(cliente)
@@ -2220,7 +2236,6 @@ def eliminar_categoria():
 def listar_todos_clientes():
     if session.get('user_id') is None: return {'data': []}
     
-    # Traemos todos los clientes ordenados por la última vez que se actualizaron
     clientes = Client.query.order_by(Client.last_updated.desc()).all()
     
     data = []
@@ -2232,6 +2247,9 @@ def listar_todos_clientes():
             'telefono': c.telefono or '',
             'estado': c.estado,
             'condicion': c.condicion,
+            'area': c.area or '',
+            'correo': c.correo or '',
+            'rubro': c.rubro or '',
             'updated_at': c.last_updated.strftime('%d/%m/%Y %H:%M'),
             'updated_by': c.updated_by
         })
@@ -3167,7 +3185,6 @@ def check_precio(product_id, cantidad):
         "mensaje": mensaje
     }
 
-# --- BUSCADOR DE CLIENTES (PARA SELECT2) ---
 @app.route('/api/buscar_clientes_db')
 def buscar_clientes_db():
     if session.get('user_id') is None: return {'results': []}
@@ -3175,13 +3192,12 @@ def buscar_clientes_db():
     q = request.args.get('q', '').strip()
     if not q: return {'results': []}
     
-    # Buscar por RUC o Nombre (contiene texto)
     clientes = Client.query.filter(
         or_(
             Client.documento.ilike(f"%{q}%"),
             Client.nombre.ilike(f"%{q}%")
         )
-    ).limit(10).all() # Máximo 10 resultados para ser rápido
+    ).limit(10).all()
     
     resultados = []
     for c in clientes:
@@ -3193,11 +3209,15 @@ def buscar_clientes_db():
             'telefono': c.telefono,
             'estado': c.estado,
             'condicion': c.condicion,
-            # <-- AGREGADOS
             'ubigeo': c.ubigeo,
             'distrito': c.distrito,
             'provincia': c.provincia,
             'departamento': c.departamento,
+
+            # --- NUEVO ---
+            'area': c.area or '',
+            'correo': c.correo or '',
+            'rubro': c.rubro or '',
             
             'updated': c.last_updated.strftime('%d/%m/%Y')
         })
@@ -4841,19 +4861,23 @@ def fix_render_db():
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 
-@app.route('/fix_db_precios')
-def fix_db_precios():
+@app.route('/fix_cliente_datos_comerciales')
+def fix_cliente_datos_comerciales():
     try:
-        from sqlalchemy import text
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            
-            # Intentamos agregar la nueva columna a la tabla order_detail
-            try: 
-                conn.execute(text('ALTER TABLE order_detail ADD COLUMN precio_catalogo_sistema FLOAT DEFAULT 0.0'))
-            except Exception as e: 
-                print(f"Aviso precio_catalogo_sistema: {e}")
-
-        return "<h2>✅ Base de datos actualizada: Columna 'precio_catalogo_sistema' agregada a order_detail.</h2>"
+            try:
+                conn.execute(text('ALTER TABLE client ADD COLUMN area VARCHAR(150)'))
+            except Exception as e:
+                print(f"Aviso area: {e}")
+            try:
+                conn.execute(text('ALTER TABLE client ADD COLUMN correo VARCHAR(150)'))
+            except Exception as e:
+                print(f"Aviso correo: {e}")
+            try:
+                conn.execute(text('ALTER TABLE client ADD COLUMN rubro VARCHAR(150)'))
+            except Exception as e:
+                print(f"Aviso rubro: {e}")
+        return "<h2>✅ Base de datos actualizada: area, correo y rubro agregados a Client.</h2>"
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 

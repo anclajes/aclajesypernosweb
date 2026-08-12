@@ -172,6 +172,18 @@
                         <label class="small text-muted mb-1 fw-bold">Atención (Contacto)</label>
                         <input type="text" id="cli_atte" class="form-control form-control-sm shadow-sm" placeholder="Ej: Sr. Juan">
                     </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="small text-muted mb-1 fw-bold">Área / Departamento Contacto</label>
+                        <input type="text" id="cli_area" class="form-control form-control-sm shadow-sm" placeholder="Ej: Logística, Compras...">
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="small text-muted mb-1 fw-bold">Correo Electrónico</label>
+                        <input type="email" id="cli_correo" class="form-control form-control-sm shadow-sm" placeholder="correo@empresa.com">
+                    </div>
+                    <div class="col-12">
+                        <label class="small text-muted mb-1 fw-bold">Rubro del Cliente</label>
+                        <input type="text" id="cli_rubro" class="form-control form-control-sm shadow-sm" placeholder="Ej: Minería, Construcción, Retail...">
+                    </div>
                     <div class="col-12">
                         <label class="small text-muted mb-1 fw-bold">O/C Cliente (Opcional)</label>
                         <input type="text" id="cli_oc" class="form-control form-control-sm shadow-sm" placeholder="N° Orden Compra">
@@ -2587,6 +2599,13 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+
+                        // --- NUEVO: autocompletar datos comerciales ---
+                $('#cli_area').val(data.area || '');
+                $('#cli_correo').val(data.correo || '');
+                $('#cli_rubro').val(data.rubro || '');
+
+
                 // GUARDAR EN HIDDENS PARA EL BOTÓN VER FICHA
                 $('#hidden_estado').val(data.estado);   
                 $('#hidden_condicion').val(data.condicion);
@@ -2602,6 +2621,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#inputDireccionEntrega').val("");
                 // LIMPIAR CAMPOS SI ES NUEVO
                 $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
+                $('#cli_area').val(""); $('#cli_correo').val(""); $('#cli_rubro').val("");
             }
         });
 
@@ -2678,17 +2698,33 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 
 
 
-    function guardarSoloCliente() {
+function guardarSoloCliente() {
+    const ruc = $('#cli_doc_select').val(); 
+    const nombre = $('#cli_nom').val(); 
+    const tel = $('#cli_tel').val();
+    const area = $('#cli_area').val().trim();
+    const correo = $('#cli_correo').val().trim();
+    const rubro = $('#cli_rubro').val().trim();
 
-        const ruc = $('#cli_doc_select').val(); const nombre = $('#cli_nom').val(); const tel = $('#cli_tel').val();
-
-        if(!ruc || !nombre) return Swal.fire('Error', 'Debe haber un cliente cargado', 'warning');
-
-        let formData = new FormData(); formData.append('documento', ruc); formData.append('telefono', tel);
-
-        fetch('/api/actualizar_telefono_cliente', { method: 'POST', body: formData }).then(r => r.json()).then(data => { if(data.status === 'success') { Swal.fire({ icon: 'success', title: 'Contacto guardado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 }); } else { Swal.fire('Error', data.msg, 'error'); } });
-
-    }
+    if(!ruc || !nombre) return Swal.fire('Error', 'Debe haber un cliente cargado', 'warning');
+    
+    let formData = new FormData(); 
+    formData.append('documento', ruc); 
+    formData.append('telefono', tel);
+    formData.append('area', area);
+    formData.append('correo', correo);
+    formData.append('rubro', rubro);
+    
+    fetch('/api/actualizar_telefono_cliente', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => { 
+            if(data.status === 'success') { 
+                Swal.fire({ icon: 'success', title: 'Contacto guardado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 }); 
+            } else { 
+                Swal.fire('Error', data.msg, 'error'); 
+            } 
+        });
+}
 
 
 
@@ -2721,6 +2757,9 @@ function buscarClienteApi(force = false) {
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
                 // ----------------------------------------------
+                if (data.area) $('#cli_area').val(data.area);
+                if (data.correo) $('#cli_correo').val(data.correo);
+                if (data.rubro) $('#cli_rubro').val(data.rubro);
                 
                 $('#hidden_estado').val(data.estado);
                 $('#hidden_condicion').val(data.condicion);
@@ -4217,6 +4256,10 @@ function mostrarModalResumen() {
             cliente_departamento: $('#cli_departamento').val(),
             cliente_provincia: $('#cli_provincia').val(),
             cliente_distrito: $('#cli_distrito').val(),
+
+            cliente_area: $('#cli_area').val(),
+            cliente_correo: $('#cli_correo').val(),
+            cliente_rubro: $('#cli_rubro').val(),
             // ------------------------
             cliente_atte: $('#cli_atte').val(), 
             orden_compra: $('#cli_oc').val(),
@@ -4359,22 +4402,30 @@ function abrirDirectorioClientes() {
                     const nombreSafe = (c.nombre || '').replace(/'/g, "&#39;");
                     const fechaAudit = c.updated_at || '-';
                     const userAudit = c.updated_by || 'Sistema';
-
                     const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
+
+                    // --- NUEVO: mostrar rubro/correo si existen ---
+                    let extraInfo = '';
+                    if (c.rubro || c.correo || c.area) {
+                        extraInfo = `<div class="text-muted mt-1" style="font-size: 0.7rem;">
+                            ${c.rubro ? '<i class="bi bi-briefcase"></i> ' + c.rubro + ' &nbsp;' : ''}
+                            ${c.area ? '<i class="bi bi-diagram-3"></i> ' + c.area + ' &nbsp;' : ''}
+                            ${c.correo ? '<i class="bi bi-envelope"></i> ' + c.correo : ''}
+                        </div>`;
+                    }
                     
                     const fila = `
                         <tr>
                             <td class="fw-bold text-primary small">${c.documento}</td>
-                            <td class="small text-truncate" style="max-width: 250px;">${c.nombre}</td>
-                            <td class="d-none d-md-table-cell">${badgeEst}</td>
-                            
-                            <td class="small text-muted" style="font-size: 0.75rem;">
-                                ${fechaAudit}<br>
-                                <span class="fst-italic">Por: ${userAudit}</span>
+                            <td class="small text-truncate" style="max-width: 250px;">
+                                ${c.nombre}
+                                ${extraInfo}
                             </td>
-
+                            <td class="d-none d-md-table-cell">${badgeEst}</td>
+                            <td class="small text-muted" style="font-size: 0.75rem;">
+                                ${fechaAudit}<br><span class="fst-italic">Por: ${userAudit}</span>
+                            </td>
                             <td class="text-end">
-                                <!-- AHORA SOLO ENVIAMOS EL RUC Y EL NOMBRE -->
                                 <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
                                     onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')">
                                     <i class="bi bi-check2-square"></i> Usar
