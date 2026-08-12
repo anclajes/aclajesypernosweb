@@ -2715,6 +2715,7 @@ function guardarSoloCliente() {
     const area = $('#cli_area').val().trim();
     const correo = $('#cli_correo').val().trim();
     const rubro = $('#cli_rubro').val().trim();
+    const atencion = $('#cli_atte').val().trim();
 
     if(!ruc || !nombre) return Swal.fire('Error', 'Debe haber un cliente cargado', 'warning');
     
@@ -2724,6 +2725,7 @@ function guardarSoloCliente() {
     formData.append('area', area);
     formData.append('correo', correo);
     formData.append('rubro', rubro);
+    formData.append('atencion', atencion);
     
     fetch('/api/actualizar_telefono_cliente', { method: 'POST', body: formData })
         .then(r => r.json())
