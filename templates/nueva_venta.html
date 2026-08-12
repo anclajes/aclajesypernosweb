@@ -2727,7 +2727,7 @@ function guardarSoloCliente() {
     formData.append('area', area);
     formData.append('correo', correo);
     formData.append('rubro', rubro);
-    formData.append('atencion', atencion);
+    formData.append('contacto_nombre', atencion);
     
     fetch('/api/actualizar_telefono_cliente', { method: 'POST', body: formData })
         .then(r => r.json())

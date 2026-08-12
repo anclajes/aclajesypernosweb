@@ -1227,7 +1227,7 @@ def buscar_cliente(documento):
             'distrito': cliente.distrito,
             'provincia': cliente.provincia,
             'departamento': cliente.departamento,
-            'atencion': cliente.atencion if cliente.atencion else ''
+            'contacto_nombre': cliente.contacto_nombre or ''
         }
     return {'encontrado': False}
 
@@ -3388,7 +3388,7 @@ def buscar_clientes_db():
             'area': c.area or '',
             'correo': c.correo or '',
             'rubro': c.rubro or '',
-            'atencion': c.atencion or '',
+            'contacto_nombre': c.contacto_nombre or '',
             
             'updated': c.last_updated.strftime('%d/%m/%Y')
         })
