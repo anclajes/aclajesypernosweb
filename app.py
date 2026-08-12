@@ -183,7 +183,7 @@ def index():
     # VISTA 2: VENDEDOR (MI RENDIMIENTO PERSONAL)
     # ======================================================
     elif rol == 'vendedor':
-        # --- 1. FILTRO DE FECHAS (con preset por defecto: últimos 90 días) ---
+        # --- 1. FILTRO DE FECHAS ---
         fecha_inicio_str = request.args.get('fecha_inicio')
         fecha_fin_str = request.args.get('fecha_fin')
 
@@ -196,40 +196,73 @@ def index():
             fecha_inicio_str = f_ini.strftime('%Y-%m-%d')
             fecha_fin_str = f_fin.strftime('%Y-%m-%d')
 
-        # Base: solo ventas de este vendedor, en el rango, sin anuladas/rechazadas para las métricas de venta real
-        estados_venta_real = ['Por Despachar', 'Despachado', 'Entregado']
-        base_periodo = Order.query.filter(
-            Order.vendedor_id == user_id,
-            Order.fecha.between(f_ini, f_fin)
-        )
+        # --- CLAVE: SOLO 'Entregado' ES VENTA REAL (stock ya descontado en picking_almacen) ---
+        # 'Por Despachar' todavía puede cancelarse o devolverse antes de salir físicamente
+        ESTADO_VENTA_REAL = 'Entregado'
+        estados_incidencia_stock = ['Devuelto', 'Despacho Cancelado', 'Anulado', 'Rechazado']
 
-        # --- 2. KPIs DEL PERÍODO ---
-        ventas_periodo_query = base_periodo.filter(Order.estado.in_(estados_venta_real))
+        # --- 2. KPIs DEL PERÍODO (solo Entregado) ---
         total_ventas_periodo = db.session.query(func.sum(Order.total)).filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado.in_(estados_venta_real)
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
-        cantidad_ventas_periodo = ventas_periodo_query.count()
+        cantidad_ventas_periodo = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
+        ).count()
         ticket_promedio = (total_ventas_periodo / cantidad_ventas_periodo) if cantidad_ventas_periodo > 0 else 0
 
         mis_ventas_hoy = db.session.query(func.sum(Order.total)).filter(
-            Order.vendedor_id == user_id, func.date(Order.fecha) == hoy, Order.estado.in_(estados_venta_real)
+            Order.vendedor_id == user_id, func.date(Order.fecha) == hoy, Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
         mis_ventas_mes = db.session.query(func.sum(Order.total)).filter(
             Order.vendedor_id == user_id, extract('year', Order.fecha) == hoy.year,
-            extract('month', Order.fecha) == hoy.month, Order.estado.in_(estados_venta_real)
+            extract('month', Order.fecha) == hoy.month, Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
 
-        # --- 3. COTIZACIONES POR ETAPA (agrupado igual que las pestañas del historial) ---
+        # --- NUEVO: PENDIENTE DE DESPACHO (dinero "en camino", aún no confirmado como venta) ---
+        monto_por_despachar = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
+        ).scalar() or 0
+        cantidad_por_despachar = Order.query.filter(
+            Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
+        ).count()
+
+        # --- 3. COTIZACIONES POR ETAPA ---
         estados_borradores = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente']
         estados_revision = ['Por Verificar', 'Pendiente Aprobacion', 'Revision Pre-Cliente', 'Pendiente Aprobacion Final']
         estados_incidencias = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto']
 
         count_borradores = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_borradores)).count()
         count_revision = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_revision)).count()
-        count_historial = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_venta_real)).count()
+        count_historial = Order.query.filter(Order.vendedor_id == user_id, Order.estado == ESTADO_VENTA_REAL).count()
         count_incidencias = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_incidencias)).count()
 
-        # --- 4. VENTAS POR MES (últimos 6 meses, para el gráfico de línea) ---
+        # --- NUEVO: ESTADÍSTICAS DE DEVOLUCIONES / CANCELACIONES (impacto negativo) ---
+        devoluciones_qs = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
+        )
+        cancelaciones_qs = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Despacho Cancelado'
+        )
+        anuladas_qs = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Anulado'
+        )
+
+        count_devoluciones = devoluciones_qs.count()
+        monto_devoluciones = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
+        ).scalar() or 0
+
+        count_cancelaciones = cancelaciones_qs.count()
+        count_anuladas = anuladas_qs.count()
+        total_incidencias_periodo = count_devoluciones + count_cancelaciones + count_anuladas
+
+        # Tasa de efectividad: cuántas cotizaciones creadas en el período terminaron entregadas
+        total_creadas_periodo = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin)
+        ).count()
+        tasa_efectividad = round((cantidad_ventas_periodo / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
+
+        # --- 4. VENTAS POR MES (últimos 6 meses, solo Entregado) ---
         seis_meses_atras = hoy.replace(day=1) - timedelta(days=180)
         ventas_por_mes_raw = db.session.query(
             extract('year', Order.fecha).label('anio'),
@@ -238,14 +271,14 @@ def index():
         ).filter(
             Order.vendedor_id == user_id,
             Order.fecha >= seis_meses_atras,
-            Order.estado.in_(estados_venta_real)
+            Order.estado == ESTADO_VENTA_REAL
         ).group_by('anio', 'mes').order_by('anio', 'mes').all()
 
         meses_nombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
         labels_meses = [f"{meses_nombres[int(r.mes)]} {int(r.anio)}" for r in ventas_por_mes_raw]
         data_meses = [round(float(r.total), 2) for r in ventas_por_mes_raw]
 
-        # --- 5. TOP 5 PRODUCTOS MÁS VENDIDOS (en el período filtrado) ---
+        # --- 5. TOP 5 PRODUCTOS MÁS VENDIDOS (solo Entregado) ---
         top_productos_raw = db.session.query(
             Product.nombre,
             func.sum(OrderDetail.cantidad).label('total_qty'),
@@ -255,13 +288,16 @@ def index():
          .filter(
             Order.vendedor_id == user_id,
             Order.fecha.between(f_ini, f_fin),
-            Order.estado.in_(estados_venta_real)
+            Order.estado == ESTADO_VENTA_REAL
          ).group_by(Product.id).order_by(text('total_monto DESC')).limit(5).all()
 
-        top_productos_labels = [p.nombre[:35] for p in top_productos_raw]
+        # Nombre corto para el eje del gráfico + nombre completo para el tooltip
+        top_productos_labels = [(p.nombre[:22] + '…') if len(p.nombre) > 22 else p.nombre for p in top_productos_raw]
+        top_productos_full = [p.nombre for p in top_productos_raw]
         top_productos_data = [round(float(p.total_monto), 2) for p in top_productos_raw]
+        top_productos_qty = [int(p.total_qty) for p in top_productos_raw]
 
-        # --- 6. TOP 5 CLIENTES QUE MÁS COMPRAN ---
+        # --- 6. TOP 5 CLIENTES QUE MÁS COMPRAN (solo Entregado) ---
         top_clientes_raw = db.session.query(
             Client.nombre,
             func.sum(Order.total).label('total_monto'),
@@ -270,13 +306,15 @@ def index():
          .filter(
             Order.vendedor_id == user_id,
             Order.fecha.between(f_ini, f_fin),
-            Order.estado.in_(estados_venta_real)
+            Order.estado == ESTADO_VENTA_REAL
          ).group_by(Client.id).order_by(text('total_monto DESC')).limit(5).all()
 
-        top_clientes_labels = [c.nombre[:30] for c in top_clientes_raw]
+        top_clientes_labels = [(c.nombre[:20] + '…') if len(c.nombre) > 20 else c.nombre for c in top_clientes_raw]
+        top_clientes_full = [c.nombre for c in top_clientes_raw]
         top_clientes_data = [round(float(c.total_monto), 2) for c in top_clientes_raw]
+        top_clientes_qty = [int(c.cantidad) for c in top_clientes_raw]
 
-        # --- 7. TOP LUGARES (DISTRITO) QUE MÁS COMPRAN ---
+        # --- 7. TOP LUGARES (DISTRITO) QUE MÁS COMPRAN (solo Entregado) ---
         top_lugares_raw = db.session.query(
             Client.distrito,
             func.sum(Order.total).label('total_monto')
@@ -284,7 +322,7 @@ def index():
          .filter(
             Order.vendedor_id == user_id,
             Order.fecha.between(f_ini, f_fin),
-            Order.estado.in_(estados_venta_real),
+            Order.estado == ESTADO_VENTA_REAL,
             Client.distrito.isnot(None),
             Client.distrito != ''
          ).group_by(Client.distrito).order_by(text('total_monto DESC')).limit(6).all()
@@ -301,16 +339,28 @@ def index():
                                total_ventas_periodo=total_ventas_periodo,
                                cantidad_ventas_periodo=cantidad_ventas_periodo,
                                ticket_promedio=ticket_promedio,
+                               monto_por_despachar=monto_por_despachar,
+                               cantidad_por_despachar=cantidad_por_despachar,
                                count_borradores=count_borradores,
                                count_revision=count_revision,
                                count_historial=count_historial,
                                count_incidencias=count_incidencias,
+                               count_devoluciones=count_devoluciones,
+                               monto_devoluciones=monto_devoluciones,
+                               count_cancelaciones=count_cancelaciones,
+                               count_anuladas=count_anuladas,
+                               total_incidencias_periodo=total_incidencias_periodo,
+                               tasa_efectividad=tasa_efectividad,
                                labels_meses=labels_meses,
                                data_meses=data_meses,
                                top_productos_labels=top_productos_labels,
+                               top_productos_full=top_productos_full,
                                top_productos_data=top_productos_data,
+                               top_productos_qty=top_productos_qty,
                                top_clientes_labels=top_clientes_labels,
+                               top_clientes_full=top_clientes_full,
                                top_clientes_data=top_clientes_data,
+                               top_clientes_qty=top_clientes_qty,
                                top_lugares_labels=top_lugares_labels,
                                top_lugares_data=top_lugares_data,
                                ultimas=mis_ultimas,
