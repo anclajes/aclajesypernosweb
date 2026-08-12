@@ -2610,7 +2610,8 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
 
-                        // --- NUEVO: autocompletar datos comerciales ---
+                // --- NUEVO: autocompletar datos comerciales ---
+                $('#cli_atte').val(data.contacto_nombre || '');
                 $('#cli_area').val(data.area || '');
                 $('#cli_correo').val(data.correo || '');
                 $('#cli_rubro').val(data.rubro || '');
@@ -2632,6 +2633,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 // LIMPIAR CAMPOS SI ES NUEVO
                 $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
                 $('#cli_area').val(""); $('#cli_correo').val(""); $('#cli_rubro').val("");
+                $('#cli_atte').val("");
             }
         });
 
@@ -2768,11 +2770,11 @@ function buscarClienteApi(force = false) {
                 $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+                $('#cli_atte').val(data.contacto_nombre || '');
                 // ----------------------------------------------
                 if (data.area) $('#cli_area').val(data.area);
                 if (data.correo) $('#cli_correo').val(data.correo);
                 if (data.rubro) $('#cli_rubro').val(data.rubro);
-                $('#cli_atte').val(data.atencion || data.contacto || '');
                 
                 $('#hidden_estado').val(data.estado);
                 $('#hidden_condicion').val(data.condicion);

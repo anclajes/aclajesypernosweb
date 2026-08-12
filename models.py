@@ -83,7 +83,8 @@ class Client(db.Model):
         # ---> NUEVOS CAMPOS MANUALES (billetera de cliente) <---
     area = db.Column(db.String(150), nullable=True)      # Ej: Logística, Compras, Obras
     correo = db.Column(db.String(150), nullable=True)     # Email de contacto
-    rubro = db.Column(db.String(150), nullable=True)      # Ej: Minería, Construcción, Retail
+    rubro = db.Column(db.String(150), nullable=True) 
+    contacto_nombre = db.Column(db.String(150), nullable=True)     # Ej: Minería, Construcción, Retail
 
     last_updated = db.Column(db.DateTime, default=hora_peru)
     updated_by = db.Column(db.String(50), default='Sistema')

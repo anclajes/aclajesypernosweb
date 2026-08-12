@@ -1,52 +1,245 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>👋 Hola, {{ session.get('nombre') }}</h2>
-<p class="text-muted">Resumen de tu desempeño</p>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card bg-light border-primary h-100">
-            <div class="card-body text-center">
-                <h5 class="text-primary">Tus Ventas Hoy</h5>
-                <h2 class="fw-bold">S/ {{ "%.2f"|format(hoy) }}</h2>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3 gap-2">
+    <div>
+        <h2 class="mb-0 fw-bold">👋 Hola, {{ session.get('nombre') }}</h2>
+        <p class="text-muted mb-0">Panel de desempeño comercial</p>
+    </div>
+    <a href="{{ url_for('nueva_venta') }}" class="btn btn-success shadow-sm fw-bold px-4">
+        <i class="bi bi-plus-lg"></i> Nueva Cotización
+    </a>
+</div>
+
+<!-- FILTRO DE FECHAS -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-6 col-md-3">
+                <label class="small fw-bold text-muted mb-1">Desde</label>
+                <input type="date" name="fecha_inicio" class="form-control form-control-sm" value="{{ fecha_inicio }}">
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="small fw-bold text-muted mb-1">Hasta</label>
+                <input type="date" name="fecha_fin" class="form-control form-control-sm" value="{{ fecha_fin }}">
+            </div>
+            <div class="col-12 col-md-3">
+                <button type="submit" class="btn btn-primary btn-sm fw-bold w-100"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+            </div>
+            <div class="col-12 col-md-3 d-flex gap-1">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm w-100">Últimos 90 días</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0B3D91 !important;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small fw-bold">VENTAS HOY</div>
+                <div class="fs-4 fw-bold text-primary">S/ {{ "%.2f"|format(hoy) }}</div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card bg-light border-success h-100">
-            <div class="card-body text-center">
-                <h5 class="text-success">Tu Acumulado Mes</h5>
-                <h2 class="fw-bold">S/ {{ "%.2f"|format(mes) }}</h2>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small fw-bold">MES ACTUAL</div>
+                <div class="fs-4 fw-bold text-success">S/ {{ "%.2f"|format(mes) }}</div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card bg-light border-warning h-100">
-            <div class="card-body text-center">
-                <h5 class="text-dark">Tus Pendientes</h5>
-                <h2 class="fw-bold">{{ pendientes }}</h2>
-                <a href="{{ url_for('historial_ventas') }}" class="btn btn-sm btn-outline-dark">Ver Listado</a>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #ffc107 !important;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small fw-bold">TOTAL PERÍODO ({{ cantidad_ventas_periodo }} ventas)</div>
+                <div class="fs-4 fw-bold text-dark">S/ {{ "%.2f"|format(total_ventas_periodo) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6f42c1 !important;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small fw-bold">TICKET PROMEDIO</div>
+                <div class="fs-4 fw-bold" style="color:#6f42c1;">S/ {{ "%.2f"|format(ticket_promedio) }}</div>
             </div>
         </div>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">Tus Últimas Cotizaciones</div>
-    <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead><tr><th>Cliente</th><th>Fecha</th><th>Total</th><th>Estado</th></tr></thead>
+<!-- ETAPAS DE COTIZACIONES (Kanban rápido) -->
+<div class="row g-2 mb-4">
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('historial_ventas', vista='borradores') }}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm bg-light">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-5 fw-bold text-secondary">{{ count_borradores }}</div>
+                    <div class="small text-muted"><i class="bi bi-pencil-square"></i> En Proceso</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('historial_ventas', vista='revision') }}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm bg-light">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-5 fw-bold text-warning">{{ count_revision }}</div>
+                    <div class="small text-muted"><i class="bi bi-hourglass-split"></i> En Validación</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('historial_ventas', vista='historial') }}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm bg-light">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-5 fw-bold text-success">{{ count_historial }}</div>
+                    <div class="small text-muted"><i class="bi bi-archive"></i> Historial Final</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-3">
+        <a href="{{ url_for('historial_ventas', vista='incidencias') }}" class="text-decoration-none">
+            <div class="card border-0 shadow-sm bg-light">
+                <div class="card-body py-2 text-center">
+                    <div class="fs-5 fw-bold text-danger">{{ count_incidencias }}</div>
+                    <div class="small text-muted"><i class="bi bi-x-octagon-fill"></i> Incidencias</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- GRÁFICO VENTAS POR MES -->
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white fw-bold text-primary"><i class="bi bi-graph-up-arrow"></i> Evolución de Ventas (últimos 6 meses)</div>
+    <div class="card-body">
+        <canvas id="chartVentasMes" height="80"></canvas>
+    </div>
+</div>
+
+<!-- 3 GRÁFICOS EN FILA -->
+<div class="row g-3 mb-3">
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold text-success small"><i class="bi bi-box-seam"></i> Top 5 Productos Vendidos</div>
+            <div class="card-body"><canvas id="chartProductos"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold text-primary small"><i class="bi bi-people-fill"></i> Top 5 Clientes</div>
+            <div class="card-body"><canvas id="chartClientes"></canvas></div>
+        </div>
+    </div>
+    <div class="col-12 col-lg-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold text-danger small"><i class="bi bi-geo-alt-fill"></i> Top Lugares (Distrito)</div>
+            <div class="card-body"><canvas id="chartLugares"></canvas></div>
+        </div>
+    </div>
+</div>
+
+<!-- TABLA ÚLTIMAS COTIZACIONES -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-white fw-bold">Tus Últimas Cotizaciones</div>
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0 small align-middle">
+            <thead class="bg-light text-muted text-uppercase">
+                <tr><th class="ps-3">Cliente</th><th>Fecha</th><th class="text-end">Total</th><th class="text-center">Estado</th></tr>
+            </thead>
             <tbody>
                 {% for o in ultimas %}
                 <tr>
-                    <td>{{ o.cliente.nombre }}</td>
-                    <td>{{ o.fecha.strftime('%d/%m') }}</td>
-                    <td>S/ {{ "%.2f"|format(o.total) }}</td>
-                    <td>{{ o.estado }}</td>
+                    <td class="ps-3 fw-bold">{{ o.cliente.nombre }}</td>
+                    <td>{{ o.fecha.strftime('%d/%m/%Y') }}</td>
+                    <td class="text-end">{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(o.total) }}</td>
+                    <td class="text-center"><span class="badge bg-secondary">{{ o.estado }}</span></td>
                 </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-muted py-4">Aún no tienes cotizaciones registradas.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
+
+<script>
+const paletaAzul = '#0B3D91';
+const paletaVerde = '#198754';
+const paletaAmbar = '#ffc107';
+const paletaMorado = '#6f42c1';
+const paletaRojo = '#dc3545';
+
+// --- GRÁFICO 1: VENTAS POR MES (LÍNEA) ---
+new Chart(document.getElementById('chartVentasMes'), {
+    type: 'line',
+    data: {
+        labels: {{ labels_meses | tojson }},
+        datasets: [{
+            label: 'Ventas (S/)',
+            data: {{ data_meses | tojson }},
+            borderColor: paletaAzul,
+            backgroundColor: 'rgba(11,61,145,0.1)',
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: paletaAzul,
+            pointRadius: 4
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
+    }
+});
+
+// --- GRÁFICO 2: TOP PRODUCTOS (BARRA HORIZONTAL) ---
+new Chart(document.getElementById('chartProductos'), {
+    type: 'bar',
+    data: {
+        labels: {{ top_productos_labels | tojson }},
+        datasets: [{ label: 'S/', data: {{ top_productos_data | tojson }}, backgroundColor: paletaVerde, borderRadius: 4 }]
+    },
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } }
+    }
+});
+
+// --- GRÁFICO 3: TOP CLIENTES (BARRA HORIZONTAL) ---
+new Chart(document.getElementById('chartClientes'), {
+    type: 'bar',
+    data: {
+        labels: {{ top_clientes_labels | tojson }},
+        datasets: [{ label: 'S/', data: {{ top_clientes_data | tojson }}, backgroundColor: paletaAzul, borderRadius: 4 }]
+    },
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } }
+    }
+});
+
+// --- GRÁFICO 4: TOP LUGARES (DONA) ---
+new Chart(document.getElementById('chartLugares'), {
+    type: 'doughnut',
+    data: {
+        labels: {{ top_lugares_labels | tojson }},
+        datasets: [{
+            data: {{ top_lugares_data | tojson }},
+            backgroundColor: [paletaAzul, paletaVerde, paletaAmbar, paletaMorado, paletaRojo, '#6c757d']
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+    }
+});
+</script>
 {% endblock %}

@@ -183,17 +183,139 @@ def index():
     # VISTA 2: VENDEDOR (MI RENDIMIENTO PERSONAL)
     # ======================================================
     elif rol == 'vendedor':
-        mis_ventas_hoy = db.session.query(func.sum(Order.total)).filter(Order.vendedor_id == user_id, func.date(Order.fecha) == hoy).scalar() or 0
-        mis_ventas_mes = db.session.query(func.sum(Order.total)).filter(Order.vendedor_id == user_id, extract('year', Order.fecha) == hoy.year, extract('month', Order.fecha) == hoy.month).scalar() or 0
-        mis_pendientes = Order.query.filter_by(vendedor_id=user_id, estado='Pendiente').count()
-        
-        mis_ultimas = Order.query.filter_by(vendedor_id=user_id).order_by(Order.fecha.desc()).limit(5).all()
-        
-        return render_template('dashboard_vendedor.html', 
-                               hoy=mis_ventas_hoy, 
-                               mes=mis_ventas_mes, 
-                               pendientes=mis_pendientes,
-                               ultimas=mis_ultimas)
+        # --- 1. FILTRO DE FECHAS (con preset por defecto: últimos 90 días) ---
+        fecha_inicio_str = request.args.get('fecha_inicio')
+        fecha_fin_str = request.args.get('fecha_fin')
+
+        if fecha_inicio_str and fecha_fin_str:
+            f_ini = datetime.strptime(fecha_inicio_str, '%Y-%m-%d')
+            f_fin = datetime.strptime(fecha_fin_str + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        else:
+            f_fin = hora_peru()
+            f_ini = f_fin - timedelta(days=90)
+            fecha_inicio_str = f_ini.strftime('%Y-%m-%d')
+            fecha_fin_str = f_fin.strftime('%Y-%m-%d')
+
+        # Base: solo ventas de este vendedor, en el rango, sin anuladas/rechazadas para las métricas de venta real
+        estados_venta_real = ['Por Despachar', 'Despachado', 'Entregado']
+        base_periodo = Order.query.filter(
+            Order.vendedor_id == user_id,
+            Order.fecha.between(f_ini, f_fin)
+        )
+
+        # --- 2. KPIs DEL PERÍODO ---
+        ventas_periodo_query = base_periodo.filter(Order.estado.in_(estados_venta_real))
+        total_ventas_periodo = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado.in_(estados_venta_real)
+        ).scalar() or 0
+        cantidad_ventas_periodo = ventas_periodo_query.count()
+        ticket_promedio = (total_ventas_periodo / cantidad_ventas_periodo) if cantidad_ventas_periodo > 0 else 0
+
+        mis_ventas_hoy = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, func.date(Order.fecha) == hoy, Order.estado.in_(estados_venta_real)
+        ).scalar() or 0
+        mis_ventas_mes = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, extract('year', Order.fecha) == hoy.year,
+            extract('month', Order.fecha) == hoy.month, Order.estado.in_(estados_venta_real)
+        ).scalar() or 0
+
+        # --- 3. COTIZACIONES POR ETAPA (agrupado igual que las pestañas del historial) ---
+        estados_borradores = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente']
+        estados_revision = ['Por Verificar', 'Pendiente Aprobacion', 'Revision Pre-Cliente', 'Pendiente Aprobacion Final']
+        estados_incidencias = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto']
+
+        count_borradores = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_borradores)).count()
+        count_revision = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_revision)).count()
+        count_historial = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_venta_real)).count()
+        count_incidencias = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_incidencias)).count()
+
+        # --- 4. VENTAS POR MES (últimos 6 meses, para el gráfico de línea) ---
+        seis_meses_atras = hoy.replace(day=1) - timedelta(days=180)
+        ventas_por_mes_raw = db.session.query(
+            extract('year', Order.fecha).label('anio'),
+            extract('month', Order.fecha).label('mes'),
+            func.sum(Order.total).label('total')
+        ).filter(
+            Order.vendedor_id == user_id,
+            Order.fecha >= seis_meses_atras,
+            Order.estado.in_(estados_venta_real)
+        ).group_by('anio', 'mes').order_by('anio', 'mes').all()
+
+        meses_nombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+        labels_meses = [f"{meses_nombres[int(r.mes)]} {int(r.anio)}" for r in ventas_por_mes_raw]
+        data_meses = [round(float(r.total), 2) for r in ventas_por_mes_raw]
+
+        # --- 5. TOP 5 PRODUCTOS MÁS VENDIDOS (en el período filtrado) ---
+        top_productos_raw = db.session.query(
+            Product.nombre,
+            func.sum(OrderDetail.cantidad).label('total_qty'),
+            func.sum(OrderDetail.subtotal).label('total_monto')
+        ).join(OrderDetail, OrderDetail.product_id == Product.id) \
+         .join(Order, Order.id == OrderDetail.order_id) \
+         .filter(
+            Order.vendedor_id == user_id,
+            Order.fecha.between(f_ini, f_fin),
+            Order.estado.in_(estados_venta_real)
+         ).group_by(Product.id).order_by(text('total_monto DESC')).limit(5).all()
+
+        top_productos_labels = [p.nombre[:35] for p in top_productos_raw]
+        top_productos_data = [round(float(p.total_monto), 2) for p in top_productos_raw]
+
+        # --- 6. TOP 5 CLIENTES QUE MÁS COMPRAN ---
+        top_clientes_raw = db.session.query(
+            Client.nombre,
+            func.sum(Order.total).label('total_monto'),
+            func.count(Order.id).label('cantidad')
+        ).join(Order, Order.cliente_id == Client.id) \
+         .filter(
+            Order.vendedor_id == user_id,
+            Order.fecha.between(f_ini, f_fin),
+            Order.estado.in_(estados_venta_real)
+         ).group_by(Client.id).order_by(text('total_monto DESC')).limit(5).all()
+
+        top_clientes_labels = [c.nombre[:30] for c in top_clientes_raw]
+        top_clientes_data = [round(float(c.total_monto), 2) for c in top_clientes_raw]
+
+        # --- 7. TOP LUGARES (DISTRITO) QUE MÁS COMPRAN ---
+        top_lugares_raw = db.session.query(
+            Client.distrito,
+            func.sum(Order.total).label('total_monto')
+        ).join(Order, Order.cliente_id == Client.id) \
+         .filter(
+            Order.vendedor_id == user_id,
+            Order.fecha.between(f_ini, f_fin),
+            Order.estado.in_(estados_venta_real),
+            Client.distrito.isnot(None),
+            Client.distrito != ''
+         ).group_by(Client.distrito).order_by(text('total_monto DESC')).limit(6).all()
+
+        top_lugares_labels = [l.distrito for l in top_lugares_raw]
+        top_lugares_data = [round(float(l.total_monto), 2) for l in top_lugares_raw]
+
+        # --- 8. ÚLTIMAS COTIZACIONES ---
+        mis_ultimas = Order.query.filter_by(vendedor_id=user_id).order_by(Order.fecha.desc()).limit(8).all()
+
+        return render_template('dashboard_vendedor.html',
+                               hoy=mis_ventas_hoy,
+                               mes=mis_ventas_mes,
+                               total_ventas_periodo=total_ventas_periodo,
+                               cantidad_ventas_periodo=cantidad_ventas_periodo,
+                               ticket_promedio=ticket_promedio,
+                               count_borradores=count_borradores,
+                               count_revision=count_revision,
+                               count_historial=count_historial,
+                               count_incidencias=count_incidencias,
+                               labels_meses=labels_meses,
+                               data_meses=data_meses,
+                               top_productos_labels=top_productos_labels,
+                               top_productos_data=top_productos_data,
+                               top_clientes_labels=top_clientes_labels,
+                               top_clientes_data=top_clientes_data,
+                               top_lugares_labels=top_lugares_labels,
+                               top_lugares_data=top_lugares_data,
+                               ultimas=mis_ultimas,
+                               fecha_inicio=fecha_inicio_str,
+                               fecha_fin=fecha_fin_str)
 
     # ======================================================
     # VISTA 3: ALMACÉN (LOGÍSTICA OPERATIVA)
@@ -276,6 +398,7 @@ def consulta_documento():
             'area': getattr(cliente_db, 'area', '') or '',
             'correo': getattr(cliente_db, 'correo', '') or '',
             'rubro': getattr(cliente_db, 'rubro', '') or '',
+            'contacto_nombre': getattr(cliente_db, 'contacto_nombre', ''),
             
             # DATOS DE AUDITORÍA
             'last_updated': cliente_db.last_updated.strftime('%d/%m %H:%M'),
@@ -383,7 +506,7 @@ def actualizar_telefono_cliente():
     area = request.form.get('area', '').strip()
     correo = request.form.get('correo', '').strip()
     rubro = request.form.get('rubro', '').strip()
-    atencion = request.form.get('atencion', '').strip()
+    contacto = request.form.get('contacto_nombre', '').strip()
     
     cliente = Client.query.filter_by(documento=doc).first()
     if cliente:
@@ -391,7 +514,7 @@ def actualizar_telefono_cliente():
         cliente.area = area
         cliente.correo = correo
         cliente.rubro = rubro
-        cliente.atencion = atencion
+        cliente.contacto_nombre = contacto
         cliente.last_updated = hora_peru()
         cliente.updated_by = session.get('username', 'Sistema')
         db.session.commit()
@@ -1326,6 +1449,7 @@ def nueva_venta():
                     telefono=data.get('cliente_tel'),
                     direccion=data.get('cliente_dir'),
                     # <-- RECOLECTAR NUEVOS CAMPOS SI EL FRONTEND LOS ENVÍA
+                    contacto_nombre=data.get('cliente_atte'),
                     ubigeo=data.get('cliente_ubigeo'),
                     distrito=data.get('cliente_distrito'),
                     provincia=data.get('cliente_provincia'),
@@ -1348,6 +1472,7 @@ def nueva_venta():
                 if data.get('cliente_provincia'): cliente.provincia = data.get('cliente_provincia')
                 if data.get('cliente_departamento'): cliente.departamento = data.get('cliente_departamento')
                 # --- NUEVO: solo pisa si viene con dato (no borra lo ya guardado) ---
+                if data.get('cliente_atte'): cliente.contacto_nombre = data.get('cliente_atte')
                 if data.get('cliente_area'): cliente.area = data.get('cliente_area')
                 if data.get('cliente_correo'): cliente.correo = data.get('cliente_correo')
                 if data.get('cliente_rubro'): cliente.rubro = data.get('cliente_rubro')
@@ -4907,25 +5032,17 @@ def fix_render_db():
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 
-@app.route('/fix_cliente_datos_comerciales')
-def fix_cliente_datos_comerciales():
+@app.route('/fix_cliente_contacto')
+def fix_cliente_contacto():
     try:
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             try:
-                conn.execute(text('ALTER TABLE client ADD COLUMN area VARCHAR(150)'))
+                conn.execute(text('ALTER TABLE client ADD COLUMN contacto_nombre VARCHAR(150)'))
             except Exception as e:
-                print(f"Aviso area: {e}")
-            try:
-                conn.execute(text('ALTER TABLE client ADD COLUMN correo VARCHAR(150)'))
-            except Exception as e:
-                print(f"Aviso correo: {e}")
-            try:
-                conn.execute(text('ALTER TABLE client ADD COLUMN rubro VARCHAR(150)'))
-            except Exception as e:
-                print(f"Aviso rubro: {e}")
-        return "<h2>✅ Base de datos actualizada: area, correo y rubro agregados a Client.</h2>"
+                print(f"Aviso: {e}")
+        return "<h2>✅ Columna contacto_nombre agregada a Client.</h2>"
     except Exception as e:
-        return f"<h2>❌ Error general: {str(e)}</h2>"
+        return f"<h2>❌ Error: {str(e)}</h2>"
 
     
 # --- ARRANQUE DE LA APLICACIÓN ---
