@@ -1074,6 +1074,11 @@ window.aplicarDescuentoItem = function(index) {
             oc: "{{ orden.orden_compra or '' }}",
             tipo_entrega: "{{ orden.tipo_entrega }}",
 
+                // --- NUEVO: DATOS COMERCIALES DEL CLIENTE ---
+            area: "{{ orden.cliente.area or '' }}",
+            correo: "{{ orden.cliente.correo or '' }}",
+            rubro: "{{ orden.cliente.rubro or '' }}",
+
             // --- RECUPERAR DÍAS HÁBILES Y FECHA ---
             dias_habiles: "{% if orden.dias_habiles_entrega is not none %}{{ orden.dias_habiles_entrega }}{% endif %}",
             fecha: "{{ orden.fecha_entrega.strftime('%Y-%m-%d') if orden.fecha_entrega else '' }}",
@@ -1105,6 +1110,11 @@ window.aplicarDescuentoItem = function(index) {
         $('#cli_tel').val(datosCliente.tel);
         $('#cli_atte').val(datosCliente.atte);
         $('#cli_oc').val(datosCliente.oc);
+
+        // --- NUEVO: LLENAR DATOS COMERCIALES ---
+        $('#cli_area').val(datosCliente.area);
+        $('#cli_correo').val(datosCliente.correo);
+        $('#cli_rubro').val(datosCliente.rubro);
 
         // ==========================================
         // --- NUEVA LÓGICA: LLENAR LOGÍSTICA ---
