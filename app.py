@@ -196,12 +196,9 @@ def index():
             fecha_inicio_str = f_ini.strftime('%Y-%m-%d')
             fecha_fin_str = f_fin.strftime('%Y-%m-%d')
 
-        # --- CLAVE: SOLO 'Entregado' ES VENTA REAL (stock ya descontado en picking_almacen) ---
-        # 'Por Despachar' todavía puede cancelarse o devolverse antes de salir físicamente
         ESTADO_VENTA_REAL = 'Entregado'
-        estados_incidencia_stock = ['Devuelto', 'Despacho Cancelado', 'Anulado', 'Rechazado']
 
-        # --- 2. KPIs DEL PERÍODO (solo Entregado) ---
+        # --- 2. KPIs DEL PERÍODO ---
         total_ventas_periodo = db.session.query(func.sum(Order.total)).filter(
             Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
@@ -218,7 +215,19 @@ def index():
             extract('month', Order.fecha) == hoy.month, Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
 
-        # --- NUEVO: PENDIENTE DE DESPACHO (dinero "en camino", aún no confirmado como venta) ---
+        # --- 3. COMPARATIVO VS PERÍODO ANTERIOR (mismo largo de días, inmediatamente antes) ---
+        duracion = f_fin - f_ini
+        f_ini_prev = f_ini - duracion
+        f_fin_prev = f_ini
+        total_periodo_anterior = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini_prev, f_fin_prev), Order.estado == ESTADO_VENTA_REAL
+        ).scalar() or 0
+        if total_periodo_anterior > 0:
+            delta_periodo = round(((total_ventas_periodo - total_periodo_anterior) / total_periodo_anterior) * 100, 1)
+        else:
+            delta_periodo = 100.0 if total_ventas_periodo > 0 else 0.0
+
+        # --- 4. PENDIENTE DE DESPACHO ---
         monto_por_despachar = db.session.query(func.sum(Order.total)).filter(
             Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
         ).scalar() or 0
@@ -226,7 +235,7 @@ def index():
             Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
         ).count()
 
-        # --- 3. COTIZACIONES POR ETAPA ---
+        # --- 5. ETAPAS DE COTIZACIONES ---
         estados_borradores = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente']
         estados_revision = ['Por Verificar', 'Pendiente Aprobacion', 'Revision Pre-Cliente', 'Pendiente Aprobacion Final']
         estados_incidencias = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto']
@@ -236,136 +245,143 @@ def index():
         count_historial = Order.query.filter(Order.vendedor_id == user_id, Order.estado == ESTADO_VENTA_REAL).count()
         count_incidencias = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_incidencias)).count()
 
-        # --- NUEVO: ESTADÍSTICAS DE DEVOLUCIONES / CANCELACIONES (impacto negativo) ---
-        devoluciones_qs = Order.query.filter(
+        count_devoluciones = Order.query.filter(
             Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
-        )
-        cancelaciones_qs = Order.query.filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Despacho Cancelado'
-        )
-        anuladas_qs = Order.query.filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Anulado'
-        )
-
-        count_devoluciones = devoluciones_qs.count()
+        ).count()
         monto_devoluciones = db.session.query(func.sum(Order.total)).filter(
             Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
         ).scalar() or 0
-
-        count_cancelaciones = cancelaciones_qs.count()
-        count_anuladas = anuladas_qs.count()
+        count_cancelaciones = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Despacho Cancelado'
+        ).count()
+        count_anuladas = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Anulado'
+        ).count()
         total_incidencias_periodo = count_devoluciones + count_cancelaciones + count_anuladas
 
-        # Tasa de efectividad: cuántas cotizaciones creadas en el período terminaron entregadas
         total_creadas_periodo = Order.query.filter(
             Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin)
         ).count()
         tasa_efectividad = round((cantidad_ventas_periodo / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
 
-        # --- 4. VENTAS POR MES (últimos 6 meses, solo Entregado) ---
+        # --- 6. VENTAS POR MES (6 meses) ---
         seis_meses_atras = hoy.replace(day=1) - timedelta(days=180)
         ventas_por_mes_raw = db.session.query(
             extract('year', Order.fecha).label('anio'),
             extract('month', Order.fecha).label('mes'),
             func.sum(Order.total).label('total')
         ).filter(
-            Order.vendedor_id == user_id,
-            Order.fecha >= seis_meses_atras,
-            Order.estado == ESTADO_VENTA_REAL
+            Order.vendedor_id == user_id, Order.fecha >= seis_meses_atras, Order.estado == ESTADO_VENTA_REAL
         ).group_by('anio', 'mes').order_by('anio', 'mes').all()
 
         meses_nombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
         labels_meses = [f"{meses_nombres[int(r.mes)]} {int(r.anio)}" for r in ventas_por_mes_raw]
         data_meses = [round(float(r.total), 2) for r in ventas_por_mes_raw]
 
-        # --- 5. TOP 5 PRODUCTOS MÁS VENDIDOS (solo Entregado) ---
+        # --- 7. TOP 8 PRODUCTOS ---
         top_productos_raw = db.session.query(
             Product.nombre,
             func.sum(OrderDetail.cantidad).label('total_qty'),
             func.sum(OrderDetail.subtotal).label('total_monto')
         ).join(OrderDetail, OrderDetail.product_id == Product.id) \
          .join(Order, Order.id == OrderDetail.order_id) \
-         .filter(
-            Order.vendedor_id == user_id,
-            Order.fecha.between(f_ini, f_fin),
-            Order.estado == ESTADO_VENTA_REAL
-         ).group_by(Product.id).order_by(text('total_monto DESC')).limit(5).all()
+         .filter(Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL) \
+         .group_by(Product.id).order_by(text('total_monto DESC')).limit(8).all()
 
-        # Nombre corto para el eje del gráfico + nombre completo para el tooltip
         top_productos_labels = [(p.nombre[:22] + '…') if len(p.nombre) > 22 else p.nombre for p in top_productos_raw]
         top_productos_full = [p.nombre for p in top_productos_raw]
         top_productos_data = [round(float(p.total_monto), 2) for p in top_productos_raw]
         top_productos_qty = [int(p.total_qty) for p in top_productos_raw]
 
-        # --- 6. TOP 5 CLIENTES QUE MÁS COMPRAN (solo Entregado) ---
+        # --- 8. TOP 8 CLIENTES ---
         top_clientes_raw = db.session.query(
-            Client.nombre,
+            Client.id, Client.nombre,
             func.sum(Order.total).label('total_monto'),
             func.count(Order.id).label('cantidad')
         ).join(Order, Order.cliente_id == Client.id) \
-         .filter(
-            Order.vendedor_id == user_id,
-            Order.fecha.between(f_ini, f_fin),
-            Order.estado == ESTADO_VENTA_REAL
-         ).group_by(Client.id).order_by(text('total_monto DESC')).limit(5).all()
+         .filter(Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL) \
+         .group_by(Client.id).order_by(text('total_monto DESC')).limit(8).all()
 
         top_clientes_labels = [(c.nombre[:20] + '…') if len(c.nombre) > 20 else c.nombre for c in top_clientes_raw]
         top_clientes_full = [c.nombre for c in top_clientes_raw]
+        top_clientes_ids = [c.id for c in top_clientes_raw]
         top_clientes_data = [round(float(c.total_monto), 2) for c in top_clientes_raw]
         top_clientes_qty = [int(c.cantidad) for c in top_clientes_raw]
 
-        # --- 7. TOP LUGARES (DISTRITO) QUE MÁS COMPRAN (solo Entregado) ---
-        top_lugares_raw = db.session.query(
-            Client.distrito,
-            func.sum(Order.total).label('total_monto')
-        ).join(Order, Order.cliente_id == Client.id) \
-         .filter(
-            Order.vendedor_id == user_id,
-            Order.fecha.between(f_ini, f_fin),
-            Order.estado == ESTADO_VENTA_REAL,
-            Client.distrito.isnot(None),
-            Client.distrito != ''
-         ).group_by(Client.distrito).order_by(text('total_monto DESC')).limit(6).all()
+        # --- 9. TOP LUGARES: Distrito, Provincia, Departamento (3 datasets para el toggle) ---
+        def top_lugares_por_campo(campo_client):
+            raw = db.session.query(
+                campo_client, func.sum(Order.total).label('total_monto')
+            ).join(Order, Order.cliente_id == Client.id).filter(
+                Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL,
+                campo_client.isnot(None), campo_client != ''
+            ).group_by(campo_client).order_by(text('total_monto DESC')).limit(7).all()
+            return [r[0] for r in raw], [round(float(r[1]), 2) for r in raw]
 
-        top_lugares_labels = [l.distrito for l in top_lugares_raw]
-        top_lugares_data = [round(float(l.total_monto), 2) for l in top_lugares_raw]
+        lugares_distrito_labels, lugares_distrito_data = top_lugares_por_campo(Client.distrito)
+        lugares_provincia_labels, lugares_provincia_data = top_lugares_por_campo(Client.provincia)
+        lugares_departamento_labels, lugares_departamento_data = top_lugares_por_campo(Client.departamento)
 
-        # --- 8. ÚLTIMAS COTIZACIONES ---
+        # --- 10. MIX POR CATEGORÍA DE PRODUCTO ---
+        categoria_raw = db.session.query(
+            Product.categoria, func.sum(OrderDetail.subtotal).label('total_monto')
+        ).join(OrderDetail, OrderDetail.product_id == Product.id) \
+         .join(Order, Order.id == OrderDetail.order_id) \
+         .filter(Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL) \
+         .group_by(Product.categoria).order_by(text('total_monto DESC')).limit(6).all()
+        categoria_labels = [r[0] or 'Sin categoría' for r in categoria_raw]
+        categoria_data = [round(float(r[1]), 2) for r in categoria_raw]
+
+        # --- 11. MIX POR CONDICIÓN DE PAGO ---
+        pago_raw = db.session.query(
+            Order.condicion_pago, func.sum(Order.total).label('total_monto')
+        ).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
+        ).group_by(Order.condicion_pago).order_by(text('total_monto DESC')).all()
+        pago_labels = [r[0] or 'Sin especificar' for r in pago_raw]
+        pago_data = [round(float(r[1]), 2) for r in pago_raw]
+
+        # --- 12. VENTAS POR DÍA DE LA SEMANA ---
+        ordenes_periodo = Order.query.filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
+        ).all()
+        dias_semana_nombres = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+        totales_dia_semana = [0.0] * 7
+        for o in ordenes_periodo:
+            totales_dia_semana[o.fecha.weekday()] += o.total
+        totales_dia_semana = [round(v, 2) for v in totales_dia_semana]
+
+        # --- 13. ÚLTIMAS COTIZACIONES ---
         mis_ultimas = Order.query.filter_by(vendedor_id=user_id).order_by(Order.fecha.desc()).limit(8).all()
 
         return render_template('dashboard_vendedor.html',
-                               hoy=mis_ventas_hoy,
-                               mes=mis_ventas_mes,
+                               hoy=mis_ventas_hoy, mes=mis_ventas_mes,
                                total_ventas_periodo=total_ventas_periodo,
                                cantidad_ventas_periodo=cantidad_ventas_periodo,
                                ticket_promedio=ticket_promedio,
+                               delta_periodo=delta_periodo,
                                monto_por_despachar=monto_por_despachar,
                                cantidad_por_despachar=cantidad_por_despachar,
-                               count_borradores=count_borradores,
-                               count_revision=count_revision,
-                               count_historial=count_historial,
-                               count_incidencias=count_incidencias,
-                               count_devoluciones=count_devoluciones,
-                               monto_devoluciones=monto_devoluciones,
-                               count_cancelaciones=count_cancelaciones,
-                               count_anuladas=count_anuladas,
+                               count_borradores=count_borradores, count_revision=count_revision,
+                               count_historial=count_historial, count_incidencias=count_incidencias,
+                               count_devoluciones=count_devoluciones, monto_devoluciones=monto_devoluciones,
+                               count_cancelaciones=count_cancelaciones, count_anuladas=count_anuladas,
                                total_incidencias_periodo=total_incidencias_periodo,
                                tasa_efectividad=tasa_efectividad,
-                               labels_meses=labels_meses,
-                               data_meses=data_meses,
-                               top_productos_labels=top_productos_labels,
-                               top_productos_full=top_productos_full,
-                               top_productos_data=top_productos_data,
-                               top_productos_qty=top_productos_qty,
-                               top_clientes_labels=top_clientes_labels,
-                               top_clientes_full=top_clientes_full,
-                               top_clientes_data=top_clientes_data,
-                               top_clientes_qty=top_clientes_qty,
-                               top_lugares_labels=top_lugares_labels,
-                               top_lugares_data=top_lugares_data,
+                               labels_meses=labels_meses, data_meses=data_meses,
+                               top_productos_labels=top_productos_labels, top_productos_full=top_productos_full,
+                               top_productos_data=top_productos_data, top_productos_qty=top_productos_qty,
+                               top_clientes_labels=top_clientes_labels, top_clientes_full=top_clientes_full,
+                               top_clientes_ids=top_clientes_ids,
+                               top_clientes_data=top_clientes_data, top_clientes_qty=top_clientes_qty,
+                               lugares_distrito_labels=lugares_distrito_labels, lugares_distrito_data=lugares_distrito_data,
+                               lugares_provincia_labels=lugares_provincia_labels, lugares_provincia_data=lugares_provincia_data,
+                               lugares_departamento_labels=lugares_departamento_labels, lugares_departamento_data=lugares_departamento_data,
+                               categoria_labels=categoria_labels, categoria_data=categoria_data,
+                               pago_labels=pago_labels, pago_data=pago_data,
+                               dias_semana_nombres=dias_semana_nombres, totales_dia_semana=totales_dia_semana,
                                ultimas=mis_ultimas,
-                               fecha_inicio=fecha_inicio_str,
-                               fecha_fin=fecha_fin_str)
+                               fecha_inicio=fecha_inicio_str, fecha_fin=fecha_fin_str)
 
     # ======================================================
     # VISTA 3: ALMACÉN (LOGÍSTICA OPERATIVA)
@@ -386,9 +402,8 @@ def index():
                                total_alertas=total_alertas)
 
 
-# --- CONSULTA RUC/DNI (VERSIÓN ROBUSTA) ---
-# --- RUTA PARA CONSULTA RUC/DNI (CORREGIDA) ---
-# --- EN APP.PY ---
+
+
 @app.route('/api/dashboard_vendedor/detalle_producto')
 def dashboard_detalle_producto():
     if 'user_id' not in session: return {'status': 'error'}, 401
@@ -473,7 +488,6 @@ def dashboard_detalle_lugar():
     } for o, cli_nombre in filas]
 
     return {'status': 'success', 'items': data}
-
 
 @app.route('/api/consulta_documento', methods=['POST'])
 def consulta_documento():
