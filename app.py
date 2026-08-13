@@ -389,6 +389,90 @@ def index():
 # --- CONSULTA RUC/DNI (VERSIÓN ROBUSTA) ---
 # --- RUTA PARA CONSULTA RUC/DNI (CORREGIDA) ---
 # --- EN APP.PY ---
+@app.route('/api/dashboard_vendedor/detalle_producto')
+def dashboard_detalle_producto():
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    nombre_producto = request.args.get('nombre', '')
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
+
+    query = db.session.query(
+        Order.id, Order.fecha, Client.nombre.label('cliente'),
+        OrderDetail.cantidad, OrderDetail.precio_aplicado, OrderDetail.subtotal
+    ).join(OrderDetail, OrderDetail.order_id == Order.id) \
+     .join(Product, Product.id == OrderDetail.product_id) \
+     .join(Client, Client.id == Order.cliente_id) \
+     .filter(
+        Order.vendedor_id == user_id, Order.estado == 'Entregado', Product.nombre == nombre_producto
+     )
+
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    filas = query.order_by(Order.fecha.desc()).all()
+    data = [{
+        'order_id': f"{r.id:05d}", 'fecha': r.fecha.strftime('%d/%m/%Y'), 'cliente': r.cliente,
+        'cantidad': r.cantidad, 'precio_unit': round(r.precio_aplicado, 2), 'subtotal': round(r.subtotal, 2)
+    } for r in filas]
+
+    return {'status': 'success', 'items': data}
+
+
+@app.route('/api/dashboard_vendedor/detalle_cliente/<int:cliente_id>')
+def dashboard_detalle_cliente(cliente_id):
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
+
+    query = Order.query.filter(
+        Order.vendedor_id == user_id, Order.estado == 'Entregado', Order.cliente_id == cliente_id
+    )
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    ordenes = query.order_by(Order.fecha.desc()).all()
+    data = [{
+        'order_id': f"{o.id:05d}", 'fecha': o.fecha.strftime('%d/%m/%Y'),
+        'items': len(o.details), 'moneda': o.moneda, 'total': round(o.total, 2)
+    } for o in ordenes]
+
+    return {'status': 'success', 'items': data}
+
+
+@app.route('/api/dashboard_vendedor/detalle_lugar')
+def dashboard_detalle_lugar():
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    tipo = request.args.get('tipo', 'distrito')  # distrito | provincia | departamento
+    valor = request.args.get('valor', '')
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
+
+    campo_map = {'distrito': Client.distrito, 'provincia': Client.provincia, 'departamento': Client.departamento}
+    campo = campo_map.get(tipo, Client.distrito)
+
+    query = db.session.query(Order, Client.nombre.label('cliente_nombre')) \
+        .join(Client, Client.id == Order.cliente_id) \
+        .filter(Order.vendedor_id == user_id, Order.estado == 'Entregado', campo == valor)
+
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    filas = query.order_by(Order.fecha.desc()).all()
+    data = [{
+        'order_id': f"{o.id:05d}", 'fecha': o.fecha.strftime('%d/%m/%Y'), 'cliente': cli_nombre,
+        'moneda': o.moneda, 'total': round(o.total, 2)
+    } for o, cli_nombre in filas]
+
+    return {'status': 'success', 'items': data}
 
 
 @app.route('/api/consulta_documento', methods=['POST'])
