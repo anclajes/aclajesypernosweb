@@ -184,6 +184,17 @@
                         <label class="small text-muted mb-1 fw-bold">Rubro del Cliente</label>
                         <input type="text" id="cli_rubro" class="form-control form-control-sm shadow-sm" placeholder="Ej: Minería, Construcción, Retail...">
                     </div>
+                    <div class="col-12 mt-2">
+                        <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                            <label class="small text-muted mb-0 fw-bold"><i class="bi bi-person-lines-fill"></i> Otros Contactos de esta Empresa</label>
+                            <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="window.abrirModalNuevoContacto()">
+                                <i class="bi bi-plus-lg"></i> Agregar
+                            </button>
+                        </div>
+                        <div id="listaContactosAdicionales" class="mt-1">
+                            <small class="text-muted fst-italic">Seleccione un cliente para ver sus contactos.</small>
+                        </div>
+                    </div>
                     <div class="col-12">
                         <label class="small text-muted mb-1 fw-bold">O/C Cliente (Opcional)</label>
                         <input type="text" id="cli_oc" class="form-control form-control-sm shadow-sm" placeholder="N° Orden Compra">
@@ -569,6 +580,32 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalNuevoContacto" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title fw-bold small">Nuevo Contacto Adicional</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="small fw-bold text-muted mb-1">Nombre *</label>
+                <input type="text" id="contactoNuevoNombre" class="form-control form-control-sm mb-2" placeholder="Ej: María Torres">
+                <label class="small fw-bold text-muted mb-1">Área / Cargo</label>
+                <input type="text" id="contactoNuevoArea" class="form-control form-control-sm mb-2" placeholder="Ej: Almacén">
+                <label class="small fw-bold text-muted mb-1">Teléfono</label>
+                <input type="text" id="contactoNuevoTelefono" class="form-control form-control-sm mb-2" placeholder="999 999 999">
+                <label class="small fw-bold text-muted mb-1">Correo</label>
+                <input type="email" id="contactoNuevoCorreo" class="form-control form-control-sm" placeholder="correo@empresa.com">
+            </div>
+            <div class="modal-footer p-2">
+                <button type="button" class="btn btn-primary btn-sm w-100" onclick="guardarNuevoContacto()">
+                    <i class="bi bi-save"></i> Guardar Contacto
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- MODAL RESUMEN DE COTIZACIÓN RESPONSIVE -->
 <div class="modal fade" id="modalResumenVenta" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-fullscreen-sm-down">
@@ -778,7 +815,19 @@
                 <h5 class="modal-title fw-bold fs-5"><i class="bi bi-people-fill me-1"></i> Directorio de Clientes Guardados</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
+            
             <div class="modal-body bg-light p-2 p-md-3">
+                {% if session.get('role') in ['admin', 'administracion'] %}
+                <div class="mb-3">
+                    <label class="small fw-bold text-muted mb-1"><i class="bi bi-people-fill"></i> Filtrar por Vendedor</label>
+                    <select id="filtroVendedorDirectorio" class="form-select form-select-sm shadow-sm" onchange="abrirDirectorioClientes()">
+                        <option value="todos">Todos los vendedores</option>
+                        <option value="mios">Solo mis clientes (Admin)</option>
+                    </select>
+                </div>
+                {% endif %}
+                
+                <div class="input-group mb-3 sticky-top shadow-sm" style="top: 0; z-index: 10;">
                 
                 <div class="input-group mb-3 sticky-top shadow-sm" style="top: 0; z-index: 10;">
                     <span class="input-group-text bg-white border-end-0 text-primary"><i class="bi bi-search"></i></span>
@@ -1193,6 +1242,20 @@ window.aplicarDescuentoItem = function(index) {
         {% endif %}
 
     });
+
+    document.addEventListener('DOMContentLoaded', () => {
+    const filtroSel = document.getElementById('filtroVendedorDirectorio');
+    if (filtroSel) {
+        fetch('/api/listar_vendedores').then(r => r.json()).then(data => {
+            data.vendedores.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.text = v.nombre;
+                filtroSel.appendChild(opt);
+            });
+        });
+    }
+});
 
 
     window.iniciarCambioMoneda = function(selectElement) {
@@ -2624,6 +2687,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 if(typeof actualizarBadges === 'function') actualizarBadges(data.estado, data.condicion);
 
                 $('#lbl_origen_datos').html(`<i class="bi bi-database"></i> Sistema (${data.updated})`);
+                cargarContactosAdicionales(data.id);
 
             } else {
 
@@ -2634,6 +2698,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
                 $('#cli_area').val(""); $('#cli_correo').val(""); $('#cli_rubro').val("");
                 $('#cli_atte').val("");
+                cargarContactosAdicionales(null);
             }
         });
 
@@ -2742,7 +2807,7 @@ function guardarSoloCliente() {
 
 
 
-function buscarClienteApi(force = false) {
+    function buscarClienteApi(force = false) {
         let numero = $('#cli_doc_select').val(); 
         if(!numero) return Swal.fire('Error', 'Escriba un número', 'warning');
         
@@ -2786,6 +2851,7 @@ function buscarClienteApi(force = false) {
                 let infoAudit = `Act: ${data.last_updated} (${data.updated_by})`;
                 let iconFuente = data.origen === 'BD' ? '<i class="bi bi-database"></i> BD Local' : '<i class="bi bi-cloud-download"></i> SUNAT';
                 $('#lbl_origen_datos').html(`${iconFuente} | <span class="text-primary">${infoAudit}</span>`);
+                cargarContactosAdicionales(numero);
                 
             } else { 
                 Swal.fire('Aviso', data.msg, 'warning'); 
@@ -4399,61 +4465,69 @@ function cargarProductos() {
 
 
 function abrirDirectorioClientes() {
-        const modal = new bootstrap.Modal(document.getElementById('modalDirectorio'));
-        modal.show();
-        
-        fetch('/api/listar_todos_clientes')
-            .then(r => r.json())
-            .then(res => {
-                const tbody = document.getElementById('bodyDirectorio');
-                tbody.innerHTML = '';
-                
-                if(res.data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay clientes guardados aún.</td></tr>';
-                    return;
+    const modal = new bootstrap.Modal(document.getElementById('modalDirectorio'));
+    modal.show();
+    
+    const filtroSel = document.getElementById('filtroVendedorDirectorio');
+    const filtroVal = filtroSel ? filtroSel.value : '';
+    const url = filtroVal ? `/api/listar_todos_clientes?filtro_vendedor=${filtroVal}` : '/api/listar_todos_clientes';
+    
+    fetch(url)
+        .then(r => r.json())
+        .then(res => {
+            const tbody = document.getElementById('bodyDirectorio');
+            tbody.innerHTML = '';
+            
+            if(res.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay clientes guardados aún.</td></tr>';
+                return;
+            }
+
+            res.data.forEach(c => {
+                const nombreSafe = (c.nombre || '').replace(/'/g, "&#39;");
+                const fechaAudit = c.updated_at || '-';
+                const userAudit = c.updated_by || 'Sistema';
+                const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
+
+                let extraInfo = '';
+                if (c.rubro || c.correo || c.area) {
+                    extraInfo = `<div class="text-muted mt-1" style="font-size: 0.7rem;">
+                        ${c.rubro ? '<i class="bi bi-briefcase"></i> ' + c.rubro + ' &nbsp;' : ''}
+                        ${c.area ? '<i class="bi bi-diagram-3"></i> ' + c.area + ' &nbsp;' : ''}
+                        ${c.correo ? '<i class="bi bi-envelope"></i> ' + c.correo : ''}
+                    </div>`;
                 }
 
-                res.data.forEach(c => {
-                    const nombreSafe = (c.nombre || '').replace(/'/g, "&#39;");
-                    const fechaAudit = c.updated_at || '-';
-                    const userAudit = c.updated_by || 'Sistema';
-                    const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
-
-                    // --- NUEVO: mostrar rubro/correo si existen ---
-                    let extraInfo = '';
-                    if (c.rubro || c.correo || c.area) {
-                        extraInfo = `<div class="text-muted mt-1" style="font-size: 0.7rem;">
-                            ${c.rubro ? '<i class="bi bi-briefcase"></i> ' + c.rubro + ' &nbsp;' : ''}
-                            ${c.area ? '<i class="bi bi-diagram-3"></i> ' + c.area + ' &nbsp;' : ''}
-                            ${c.correo ? '<i class="bi bi-envelope"></i> ' + c.correo : ''}
-                        </div>`;
-                    }
-                    
-                    const fila = `
-                        <tr>
-                            <td class="fw-bold text-primary small">${c.documento}</td>
-                            <td class="small text-truncate" style="max-width: 250px;">
-                                ${c.nombre}
-                                ${extraInfo}
-                            </td>
-                            <td class="d-none d-md-table-cell">${badgeEst}</td>
-                            <td class="small text-muted" style="font-size: 0.75rem;">
-                                ${fechaAudit}<br><span class="fst-italic">Por: ${userAudit}</span>
-                            </td>
-                            <td class="text-end">
-                                <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')">
-                                    <i class="bi bi-check2-square"></i> Usar
-                                </button>
-                            </td>
-                        </tr>
-                    `;
-                    tbody.insertAdjacentHTML('beforeend', fila);
-                });
-            })
-            .catch(err => console.error(err));
-    }
-
+                let vendedorInfo = '';
+                {% if session.get('role') in ['admin', 'administracion'] %}
+                vendedorInfo = `<div class="text-primary mt-1" style="font-size: 0.7rem;"><i class="bi bi-person-badge"></i> ${c.vendedor_dueno || 'Sin asignar'}</div>`;
+                {% endif %}
+                
+                const fila = `
+                    <tr>
+                        <td class="fw-bold text-primary small">${c.documento}</td>
+                        <td class="small text-truncate" style="max-width: 250px;">
+                            ${c.nombre}
+                            ${extraInfo}
+                            ${vendedorInfo}
+                        </td>
+                        <td class="d-none d-md-table-cell">${badgeEst}</td>
+                        <td class="small text-muted" style="font-size: 0.75rem;">
+                            ${fechaAudit}<br><span class="fst-italic">Por: ${userAudit}</span>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
+                                onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')">
+                                <i class="bi bi-check2-square"></i> Usar
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.insertAdjacentHTML('beforeend', fila);
+            });
+        })
+        .catch(err => console.error(err));
+}
 
 
     function filtrarTablaClientes() {
@@ -4747,6 +4821,84 @@ window.actualizarPrecioEnVivo = function(index, valor) {
             window.open('https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/jcrS00Alias', '_blank');
         });
     };
+
+
+window.abrirModalNuevoContacto = function() {
+    const ruc = $('#cli_doc_select').val();
+    if (!ruc) return Swal.fire('Falta Cliente', 'Seleccione o guarde el cliente principal primero.', 'warning');
+    document.getElementById('contactoNuevoNombre').value = '';
+    document.getElementById('contactoNuevoArea').value = '';
+    document.getElementById('contactoNuevoTelefono').value = '';
+    document.getElementById('contactoNuevoCorreo').value = '';
+    new bootstrap.Modal(document.getElementById('modalNuevoContacto')).show();
+}
+
+function guardarNuevoContacto() {
+    const ruc = $('#cli_doc_select').val();
+    const nombre = document.getElementById('contactoNuevoNombre').value.trim();
+    if (!nombre) return Swal.fire('Falta Nombre', 'El nombre del contacto es obligatorio.', 'warning');
+
+    let fd = new FormData();
+    fd.append('documento', ruc);
+    fd.append('nombre', nombre);
+    fd.append('area', document.getElementById('contactoNuevoArea').value.trim());
+    fd.append('telefono', document.getElementById('contactoNuevoTelefono').value.trim());
+    fd.append('correo', document.getElementById('contactoNuevoCorreo').value.trim());
+
+    fetch('/api/agregar_contacto_cliente', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                bootstrap.Modal.getInstance(document.getElementById('modalNuevoContacto')).hide();
+                Swal.fire({ icon: 'success', title: 'Contacto agregado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                cargarContactosAdicionales(ruc);
+            } else {
+                Swal.fire('Error', data.msg, 'error');
+            }
+        });
+}
+
+function cargarContactosAdicionales(ruc) {
+    const cont = document.getElementById('listaContactosAdicionales');
+    if (!ruc) { cont.innerHTML = '<small class="text-muted fst-italic">Seleccione un cliente para ver sus contactos.</small>'; return; }
+    
+    cont.innerHTML = '<small class="text-muted"><span class="spinner-border spinner-border-sm"></span> Cargando...</small>';
+    
+    fetch(`/api/listar_contactos_cliente/${ruc}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status !== 'success' || data.contactos.length === 0) {
+                cont.innerHTML = '<small class="text-muted fst-italic">Sin contactos adicionales registrados.</small>';
+                return;
+            }
+            let html = '<div class="list-group list-group-flush border rounded bg-white shadow-sm">';
+            data.contactos.forEach(c => {
+                html += `
+                    <div class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center small">
+                        <div>
+                            <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''}<br>
+                            <span class="text-muted">${c.telefono || ''} ${c.correo ? '· ' + c.correo : ''}</span>
+                        </div>
+                        <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminarContactoAdicional(${c.id}, '${ruc}')" title="Eliminar">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </div>`;
+            });
+            html += '</div>';
+            cont.innerHTML = html;
+        });
+}
+
+function eliminarContactoAdicional(id, ruc) {
+    Swal.fire({ title: '¿Eliminar contacto?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Sí, eliminar' })
+    .then(r => {
+        if (r.isConfirmed) {
+            fetch(`/api/eliminar_contacto_cliente/${id}`, { method: 'POST' })
+                .then(r => r.json())
+                .then(() => cargarContactosAdicionales(ruc));
+        }
+    });
+}
 
 </script>
 

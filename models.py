@@ -84,10 +84,28 @@ class Client(db.Model):
     area = db.Column(db.String(150), nullable=True)      # Ej: Logística, Compras, Obras
     correo = db.Column(db.String(150), nullable=True)     # Email de contacto
     rubro = db.Column(db.String(150), nullable=True) 
-    contacto_nombre = db.Column(db.String(150), nullable=True)     # Ej: Minería, Construcción, Retail
+    contacto_nombre = db.Column(db.String(150), nullable=True)  
+
+        # --- NUEVO: DUEÑO DEL REGISTRO (para separar la Billetera por vendedor) ---
+    creado_por_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    creado_por = db.relationship('User', foreign_keys=[creado_por_id], backref='clientes_creados')
 
     last_updated = db.Column(db.DateTime, default=hora_peru)
     updated_by = db.Column(db.String(50), default='Sistema')
+
+# --- NUEVO: CONTACTOS ADICIONALES POR CLIENTE ---
+class ClientContact(db.Model):
+    __tablename__ = 'client_contact'
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    nombre = db.Column(db.String(150), nullable=False)
+    telefono = db.Column(db.String(20))
+    area = db.Column(db.String(150))
+    correo = db.Column(db.String(150))
+    created_at = db.Column(db.DateTime, default=hora_peru)
+    created_by = db.Column(db.String(50), default='Sistema')
+
+    client = db.relationship('Client', backref=db.backref('contactos_adicionales', cascade="all, delete-orphan"))
 
 # EN MODELS.PY
 

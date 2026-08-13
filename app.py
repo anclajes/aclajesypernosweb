@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent
+from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent, ClientContact
 from models import ProductImportBolts, CategoryImportBolts, ProductMovementImportBolts
 from models import ProductMovement
 from models import Payment
@@ -1090,8 +1090,10 @@ def exportar_historial_excel():
             clientes_map[doc] = {
                 'RUC/DNI': c.documento,
                 'Razón Social': c.nombre,
+                'Vendedor Asignado': c.creado_por.nombre_completo if c.creado_por else '-',  # ✅ NUEVO
                 'Rubro': c.rubro or '-',
                 'Área / Contacto': c.area or '-',
+                'Contacto Principal': c.contacto_nombre or '-',  # ✅ NUEVO
                 'Correo': c.correo or '-',
                 'Teléfono': c.telefono or '-',
                 'Dirección': c.direccion or '-',
@@ -1165,7 +1167,32 @@ def exportar_historial_excel():
                 'Condición Pago': o.condicion_pago or '-',
                 'Tipo Entrega': o.tipo_entrega or '-'
             })
+
+        # =========================================================
+    # HOJA 3: CONTACTOS ADICIONALES (si existen)
+    # =========================================================
+    contactos_data = []
+    documentos_incluidos = list(clientes_map.keys())
+    if documentos_incluidos:
+        clientes_incluidos = Client.query.filter(Client.documento.in_(documentos_incluidos)).all()
+        ids_incluidos = [c.id for c in clientes_incluidos]
+        mapa_cliente_por_id = {c.id: c for c in clientes_incluidos}
+        
+        contactos_extra = ClientContact.query.filter(ClientContact.client_id.in_(ids_incluidos)).all()
+        for ct in contactos_extra:
+            cli = mapa_cliente_por_id.get(ct.client_id)
+            if not cli: continue
+            contactos_data.append({
+                'RUC/DNI': cli.documento,
+                'Razón Social': cli.nombre,
+                'Nombre Contacto': ct.nombre,
+                'Área': ct.area or '-',
+                'Teléfono': ct.telefono or '-',
+                'Correo': ct.correo or '-',
+                'Fecha Registro': ct.created_at.strftime('%d/%m/%Y') if ct.created_at else '-'
+            })
     
+    df_contactos = pd.DataFrame(contactos_data)
     df_billetera = pd.DataFrame(billetera_data)
     df_detalle = pd.DataFrame(detalle_data)
     
@@ -1174,13 +1201,17 @@ def exportar_historial_excel():
         df_billetera.to_excel(writer, index=False, sheet_name='Billetera Clientes')
         df_detalle.to_excel(writer, index=False, sheet_name='Detalle Ventas')
         
+        hojas = [('Billetera Clientes', df_billetera), ('Detalle Ventas', df_detalle)]
+        if not df_contactos.empty:
+            df_contactos.to_excel(writer, index=False, sheet_name='Contactos Adicionales')
+            hojas.append(('Contactos Adicionales', df_contactos))
+        
         workbook = writer.book
         formato_header = workbook.add_format({
             'bold': True, 'bg_color': '#0B3D91', 'font_color': 'white', 'border': 1
         })
-        formato_num = workbook.add_format({'num_format': '#,##0.00'})
         
-        for sheet_name, df in [('Billetera Clientes', df_billetera), ('Detalle Ventas', df_detalle)]:
+        for sheet_name, df in hojas:
             ws = writer.sheets[sheet_name]
             for idx, col in enumerate(df.columns):
                 max_len = max(df[col].astype(str).map(len).max() if len(df) > 0 else 10, len(col)) + 2
@@ -1605,6 +1636,7 @@ def nueva_venta():
                     area=data.get('cliente_area'),
                     correo=data.get('cliente_correo'),
                     rubro=data.get('cliente_rubro'),
+                    creado_por_id=session.get('user_id'),
                     estado='ACTIVO', condicion='HABIDO', last_updated=hora_peru()
                 )
                 db.session.add(cliente)
@@ -2554,7 +2586,24 @@ def eliminar_categoria():
 def listar_todos_clientes():
     if session.get('user_id') is None: return {'data': []}
     
-    clientes = Client.query.order_by(Client.last_updated.desc()).all()
+    rol = session.get('role')
+    user_id = session.get('user_id')
+    
+    query = Client.query
+    
+    if rol == 'vendedor':
+        # Un vendedor SOLO ve los clientes que él mismo registró
+        query = query.filter(Client.creado_por_id == user_id)
+    else:
+        # Admin/Administración: puede filtrar por vendedor específico, por "mios", o ver todos
+        filtro_vendedor = request.args.get('filtro_vendedor')
+        if filtro_vendedor == 'mios':
+            query = query.filter(Client.creado_por_id == user_id)
+        elif filtro_vendedor and filtro_vendedor != 'todos':
+            query = query.filter(Client.creado_por_id == filtro_vendedor)
+        # si es 'todos' o vacío, no filtra
+    
+    clientes = query.order_by(Client.last_updated.desc()).all()
     
     data = []
     for c in clientes:
@@ -2568,11 +2617,69 @@ def listar_todos_clientes():
             'area': c.area or '',
             'correo': c.correo or '',
             'rubro': c.rubro or '',
+            'vendedor_dueno': c.creado_por.nombre_completo if c.creado_por else 'Sin asignar',
+            'vendedor_dueno_id': c.creado_por_id or '',
             'updated_at': c.last_updated.strftime('%d/%m/%Y %H:%M'),
             'updated_by': c.updated_by
         })
     
     return {'data': data}
+
+@app.route('/api/listar_vendedores')
+def listar_vendedores():
+    if session.get('role') not in ['admin', 'administracion']: return {'vendedores': []}
+    vendedores = User.query.filter_by(role='vendedor').order_by(User.nombre_completo).all()
+    return {'vendedores': [{'id': v.id, 'nombre': v.nombre_completo} for v in vendedores]}
+
+@app.route('/api/listar_contactos_cliente/<documento>')
+def listar_contactos_cliente(documento):
+    if session.get('user_id') is None: return {'status': 'error', 'contactos': []}, 403
+    cliente = Client.query.filter_by(documento=documento).first()
+    if not cliente: return {'status': 'error', 'contactos': []}
+    
+    contactos = ClientContact.query.filter_by(client_id=cliente.id).order_by(ClientContact.created_at.desc()).all()
+    data = [{
+        'id': c.id, 'nombre': c.nombre, 'telefono': c.telefono or '',
+        'area': c.area or '', 'correo': c.correo or '',
+        'fecha': c.created_at.strftime('%d/%m/%Y') if c.created_at else ''
+    } for c in contactos]
+    return {'status': 'success', 'contactos': data}
+
+
+@app.route('/api/agregar_contacto_cliente', methods=['POST'])
+def agregar_contacto_cliente():
+    if session.get('user_id') is None: return {'status': 'error', 'msg': 'No autorizado'}, 403
+    
+    documento = request.form.get('documento', '').strip()
+    nombre = request.form.get('nombre', '').strip()
+    telefono = request.form.get('telefono', '').strip()
+    area = request.form.get('area', '').strip()
+    correo = request.form.get('correo', '').strip()
+    
+    if not documento or not nombre:
+        return {'status': 'error', 'msg': 'El nombre del contacto es obligatorio.'}
+    
+    cliente = Client.query.filter_by(documento=documento).first()
+    if not cliente:
+        return {'status': 'error', 'msg': 'Cliente no encontrado. Guarde el cliente principal primero.'}
+    
+    nuevo_contacto = ClientContact(
+        client_id=cliente.id, nombre=nombre, telefono=telefono, area=area, correo=correo,
+        created_at=hora_peru(), created_by=session.get('username', 'Sistema')
+    )
+    db.session.add(nuevo_contacto)
+    db.session.commit()
+    
+    return {'status': 'success', 'msg': 'Contacto adicional guardado.'}
+
+
+@app.route('/api/eliminar_contacto_cliente/<int:contacto_id>', methods=['POST'])
+def eliminar_contacto_cliente(contacto_id):
+    if session.get('user_id') is None: return {'status': 'error'}, 403
+    contacto = ClientContact.query.get_or_404(contacto_id)
+    db.session.delete(contacto)
+    db.session.commit()
+    return {'status': 'success'}
 
 # --- 1. API PARA PREVISUALIZAR LA LISTA COMPLETA ---
 @app.route('/api/preview_minimos', methods=['POST'])
@@ -5180,15 +5287,17 @@ def fix_render_db():
     except Exception as e:
         return f"<h2>❌ Error general: {str(e)}</h2>"
 
-@app.route('/fix_cliente_contacto')
-def fix_cliente_contacto():
+@app.route('/fix_cliente_dueno_y_contactos')
+def fix_cliente_dueno_y_contactos():
     try:
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             try:
-                conn.execute(text('ALTER TABLE client ADD COLUMN contacto_nombre VARCHAR(150)'))
+                conn.execute(text('ALTER TABLE client ADD COLUMN creado_por_id INTEGER'))
             except Exception as e:
-                print(f"Aviso: {e}")
-        return "<h2>✅ Columna contacto_nombre agregada a Client.</h2>"
+                print(f"Aviso creado_por_id: {e}")
+        # Crea client_contact si no existe (usa el modelo, compatible Postgres/SQLite)
+        db.create_all()
+        return "<h2>✅ Migración aplicada: creado_por_id agregado y tabla client_contact creada.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
 
