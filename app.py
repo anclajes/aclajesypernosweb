@@ -602,6 +602,7 @@ def consulta_documento():
                     documento=numero, nombre=razon, direccion=direccion,
                     estado=estado, condicion=condicion,
                     ubigeo=ubigeo, distrito=distrito, provincia=provincia, departamento=departamento, # <-- AGREGADO
+                    creado_por_id=session.get('user_id'),
                     last_updated=hora_peru(),
                     updated_by=usuario_actual
                 )
@@ -616,6 +617,9 @@ def consulta_documento():
                 cliente_db.distrito = distrito
                 cliente_db.provincia = provincia
                 cliente_db.departamento = departamento
+
+                if not cliente_db.creado_por_id:
+                    cliente_db.creado_por_id = session.get('user_id')
                 
                 cliente_db.last_updated = hora_peru()
                 cliente_db.updated_by = usuario_actual
@@ -663,6 +667,11 @@ def actualizar_telefono_cliente():
         cliente.correo = correo
         cliente.rubro = rubro
         cliente.contacto_nombre = contacto
+        
+        # ✅ FIX: si quedó huérfano, lo reclama el vendedor que lo está guardando ahora
+        if not cliente.creado_por_id:
+            cliente.creado_por_id = session.get('user_id')
+        
         cliente.last_updated = hora_peru()
         cliente.updated_by = session.get('username', 'Sistema')
         db.session.commit()
@@ -5300,6 +5309,21 @@ def fix_cliente_dueno_y_contactos():
         return "<h2>✅ Migración aplicada: creado_por_id agregado y tabla client_contact creada.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
+
+
+@app.route('/fix_asignar_clientes_huerfanos/<int:vendedor_id>')
+def fix_asignar_clientes_huerfanos(vendedor_id):
+    if session.get('role') not in ['admin', 'administracion']:
+        return "Acceso denegado", 403
+    
+    huerfanos = Client.query.filter(Client.creado_por_id.is_(None)).all()
+    contador = 0
+    for c in huerfanos:
+        c.creado_por_id = vendedor_id
+        contador += 1
+    db.session.commit()
+    
+    return f"<h2>✅ Se asignaron {contador} clientes huérfanos al usuario ID {vendedor_id}.</h2>"
 
     
 # --- ARRANQUE DE LA APLICACIÓN ---
