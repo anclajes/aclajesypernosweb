@@ -820,16 +820,21 @@
                 {% if session.get('role') in ['admin', 'administracion'] %}
                 <div class="mb-3">
                     <label class="small fw-bold text-muted mb-1"><i class="bi bi-people-fill"></i> Filtrar por Vendedor</label>
-                    <select id="filtroVendedorDirectorio" class="form-select form-select-sm shadow-sm" onchange="abrirDirectorioClientes()">
+                    <select id="filtroVendedorDirectorio" class="form-select form-select-sm shadow-sm" onchange="cargarClientesDirectorio()">
                         <option value="todos">Todos los vendedores</option>
                         <option value="mios">Solo mis clientes (Admin)</option>
                     </select>
                 </div>
                 {% endif %}
                 
-                <div class="input-group mb-3 sticky-top shadow-sm" style="top: 0; z-index: 10;">
-                    <span class="input-group-text bg-white border-end-0 text-primary"><i class="bi bi-search"></i></span>
-                    <input type="text" id="filtroDirectorio" class="form-control border-start-0 py-2" placeholder="Filtrar por Nombre o RUC..." onkeyup="filtrarTablaClientes()">
+                <div class="d-flex gap-2 mb-3">
+                    <div class="input-group sticky-top shadow-sm flex-grow-1" style="top: 0; z-index: 10;">
+                        <span class="input-group-text bg-white border-end-0 text-primary"><i class="bi bi-search"></i></span>
+                        <input type="text" id="filtroDirectorio" class="form-control border-start-0 py-2" placeholder="Filtrar por Nombre o RUC..." onkeyup="filtrarTablaClientes()">
+                    </div>
+                    <button type="button" class="btn btn-success shadow-sm fw-bold" onclick="descargarExcelDirectorio()" title="Descargar Excel">
+                        <i class="bi bi-file-earmark-excel"></i> <span class="d-none d-md-inline">Excel</span>
+                    </button>
                 </div>
 
                 <div class="card border-0 shadow-sm">
@@ -4463,9 +4468,17 @@ function cargarProductos() {
 
 
 function abrirDirectorioClientes() {
-    const modal = new bootstrap.Modal(document.getElementById('modalDirectorio'));
-    modal.show();
-    
+    // Reutiliza la instancia existente si ya está abierta; si no, crea una sola vez
+    const modalEl = document.getElementById('modalDirectorio');
+    let modalInstancia = bootstrap.Modal.getInstance(modalEl);
+    if (!modalInstancia) {
+        modalInstancia = new bootstrap.Modal(modalEl);
+    }
+    modalInstancia.show();
+    cargarClientesDirectorio();
+}
+
+function cargarClientesDirectorio() {
     const filtroSel = document.getElementById('filtroVendedorDirectorio');
     const filtroVal = filtroSel ? filtroSel.value : '';
     const url = filtroVal ? `/api/listar_todos_clientes?filtro_vendedor=${filtroVal}` : '/api/listar_todos_clientes';
@@ -4896,6 +4909,13 @@ function eliminarContactoAdicional(id, ruc) {
                 .then(() => cargarContactosAdicionales(ruc));
         }
     });
+}
+
+function descargarExcelDirectorio() {
+    const filtroSel = document.getElementById('filtroVendedorDirectorio');
+    const filtroVal = filtroSel ? filtroSel.value : '';
+    const url = filtroVal ? `/exportar_directorio_clientes?filtro_vendedor=${filtroVal}` : '/exportar_directorio_clientes';
+    window.open(url, '_blank');
 }
 
 </script>

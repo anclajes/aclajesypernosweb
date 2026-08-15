@@ -978,6 +978,112 @@ def exportar_excel():
         download_name=f'Inventario_ImportBolts_{hora_peru().strftime("%Y%m%d")}.xlsx'
     )
 
+@app.route('/exportar_directorio_clientes')
+def exportar_directorio_clientes():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    rol = session.get('role')
+    user_id = session.get('user_id')
+    
+    query = Client.query
+    
+    if rol == 'vendedor':
+        query = query.filter(Client.creado_por_id == user_id)
+    else:
+        filtro_vendedor = request.args.get('filtro_vendedor')
+        if filtro_vendedor == 'mios':
+            query = query.filter(Client.creado_por_id == user_id)
+        elif filtro_vendedor and filtro_vendedor != 'todos':
+            query = query.filter(Client.creado_por_id == filtro_vendedor)
+    
+    clientes = query.order_by(Client.nombre).all()
+    
+    if not clientes:
+        flash('No hay clientes para exportar con este filtro.')
+        return redirect(url_for('nueva_venta'))
+    
+    data = []
+    for c in clientes:
+        # Contar ventas entregadas y sumar montos por moneda
+        ordenes_entregadas = Order.query.filter_by(cliente_id=c.id, estado='Entregado').all()
+        total_pen = sum(o.total for o in ordenes_entregadas if o.moneda == 'PEN')
+        total_usd = sum(o.total for o in ordenes_entregadas if o.moneda == 'USD')
+        
+        data.append({
+            'RUC/DNI': c.documento,
+            'Razón Social': c.nombre,
+            'Vendedor Asignado': c.creado_por.nombre_completo if c.creado_por else 'Sin asignar',
+            'Rubro': c.rubro or '-',
+            'Área / Contacto': c.area or '-',
+            'Contacto Principal': c.contacto_nombre or '-',
+            'Correo': c.correo or '-',
+            'Teléfono': c.telefono or '-',
+            'Dirección': c.direccion or '-',
+            'Distrito': c.distrito or '-',
+            'Provincia': c.provincia or '-',
+            'Departamento': c.departamento or '-',
+            'Estado SUNAT': c.estado or '-',
+            'Condición SUNAT': c.condicion or '-',
+            'N° Ventas Entregadas': len(ordenes_entregadas),
+            'Total Vendido (S/)': round(total_pen, 2),
+            'Total Vendido ($)': round(total_usd, 2),
+            'Última Actualización': c.last_updated.strftime('%d/%m/%Y %H:%M') if c.last_updated else '-',
+            'Actualizado Por': c.updated_by or '-'
+        })
+    
+    # Contactos adicionales de estos mismos clientes
+    ids_clientes = [c.id for c in clientes]
+    contactos_extra = ClientContact.query.filter(ClientContact.client_id.in_(ids_clientes)).all()
+    mapa_cliente = {c.id: c for c in clientes}
+    
+    contactos_data = []
+    for ct in contactos_extra:
+        cli = mapa_cliente.get(ct.client_id)
+        if not cli: continue
+        contactos_data.append({
+            'RUC/DNI': cli.documento,
+            'Razón Social': cli.nombre,
+            'Nombre Contacto': ct.nombre,
+            'Área': ct.area or '-',
+            'Teléfono': ct.telefono or '-',
+            'Correo': ct.correo or '-',
+            'Fecha Registro': ct.created_at.strftime('%d/%m/%Y') if ct.created_at else '-'
+        })
+    
+    df_clientes = pd.DataFrame(data)
+    df_contactos = pd.DataFrame(contactos_data)
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_clientes.to_excel(writer, index=False, sheet_name='Billetera Clientes')
+        hojas = [('Billetera Clientes', df_clientes)]
+        if not df_contactos.empty:
+            df_contactos.to_excel(writer, index=False, sheet_name='Contactos Adicionales')
+            hojas.append(('Contactos Adicionales', df_contactos))
+        
+        workbook = writer.book
+        formato_header = workbook.add_format({'bold': True, 'bg_color': '#0B3D91', 'font_color': 'white', 'border': 1})
+        
+        for sheet_name, df in hojas:
+            ws = writer.sheets[sheet_name]
+            for idx, col in enumerate(df.columns):
+                max_len = max(df[col].astype(str).map(len).max() if len(df) > 0 else 10, len(col)) + 2
+                ws.set_column(idx, idx, min(max_len, 40))
+                ws.write(0, idx, col, formato_header)
+            ws.freeze_panes(1, 0)
+            ws.autofilter(0, 0, len(df), len(df.columns) - 1)
+    
+    output.seek(0)
+    nombre_archivo = f"Directorio_Clientes_{hora_peru().strftime('%Y%m%d_%H%M')}.xlsx"
+    
+    return send_file(
+        output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=nombre_archivo
+    )
+
 # --- NUEVA RUTA: DESCARGAR PLANTILLA VACÍA ---
 @app.route('/producto/plantilla')
 def descargar_plantilla():
