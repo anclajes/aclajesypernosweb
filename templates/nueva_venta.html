@@ -186,14 +186,15 @@
                     </div>
                     <div class="col-12 mt-2">
                         <div class="d-flex justify-content-between align-items-center border-top pt-2">
-                            <label class="small text-muted mb-0 fw-bold"><i class="bi bi-person-lines-fill"></i> Otros Contactos de esta Empresa</label>
+                            <label class="small text-muted mb-0 fw-bold"><i class="bi bi-person-lines-fill"></i> ¿A quién le cotizo?</label>
                             <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="window.abrirModalNuevoContacto()">
-                                <i class="bi bi-plus-lg"></i> Agregar
+                                <i class="bi bi-plus-lg"></i> Nuevo Contacto
                             </button>
                         </div>
-                        <div id="listaContactosAdicionales" class="mt-1">
-                            <small class="text-muted fst-italic">Seleccione un cliente para ver sus contactos.</small>
-                        </div>
+                        <select id="selectContactoGuardado" class="form-select form-select-sm shadow-sm mt-1" onchange="aplicarContactoSeleccionado()">
+                            <option value="">-- Escribir manualmente / Sin contacto guardado --</option>
+                        </select>
+                        <div id="listaContactosAdicionales" class="mt-1"></div>
                     </div>
                     <div class="col-12">
                         <label class="small text-muted mb-1 fw-bold">O/C Cliente (Opcional)</label>
@@ -2781,30 +2782,36 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 function guardarSoloCliente() {
     const ruc = $('#cli_doc_select').val(); 
     const nombre = $('#cli_nom').val(); 
-    const tel = $('#cli_tel').val();
-    const area = $('#cli_area').val().trim();
-    const correo = $('#cli_correo').val().trim();
-    const rubro = $('#cli_rubro').val().trim();
     const atencion = $('#cli_atte').val().trim();
+    const contactoSeleccionado = $('#selectContactoGuardado').val();
 
     if(!ruc || !nombre) return Swal.fire('Error', 'Debe haber un cliente cargado', 'warning');
     
-    let formData = new FormData(); 
-    formData.append('documento', ruc); 
-    formData.append('telefono', tel);
-    formData.append('area', area);
-    formData.append('correo', correo);
-    formData.append('rubro', rubro);
-    formData.append('contacto_nombre', atencion);
-    
-    fetch('/api/actualizar_telefono_cliente', { method: 'POST', body: formData })
+    // Si NO seleccionó un contacto existente y escribió un nombre nuevo, lo guarda como contacto nuevo
+    if (!contactoSeleccionado && atencion) {
+        guardarNuevoContactoDesdeFormulario();
+    } else {
+        Swal.fire({ icon: 'success', title: 'Datos verificados', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+    }
+}
+
+function guardarNuevoContactoDesdeFormulario() {
+    const ruc = $('#cli_doc_select').val();
+    let fd = new FormData();
+    fd.append('documento', ruc);
+    fd.append('nombre', $('#cli_atte').val().trim());
+    fd.append('telefono', $('#cli_tel').val().trim());
+    fd.append('area', $('#cli_area').val().trim());
+    fd.append('correo', $('#cli_correo').val().trim());
+
+    fetch('/api/agregar_contacto_cliente', { method: 'POST', body: fd })
         .then(r => r.json())
-        .then(data => { 
-            if(data.status === 'success') { 
-                Swal.fire({ icon: 'success', title: 'Contacto guardado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 }); 
-            } else { 
-                Swal.fire('Error', data.msg, 'error'); 
-            } 
+        .then(data => {
+            if (data.status === 'success') {
+                Swal.fire({ icon: 'success', title: 'Contacto guardado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                cargarContactosAdicionales(ruc);
+                setTimeout(() => $('#selectContactoGuardado').val(data.contacto_id).trigger('change'), 300);
+            }
         });
 }
 
@@ -4862,42 +4869,92 @@ function guardarNuevoContacto() {
             if (data.status === 'success') {
                 bootstrap.Modal.getInstance(document.getElementById('modalNuevoContacto')).hide();
                 Swal.fire({ icon: 'success', title: 'Contacto agregado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                
                 cargarContactosAdicionales(ruc);
+                setTimeout(() => {
+                    $('#selectContactoGuardado').val(data.contacto_id).trigger('change');
+                }, 300); // pequeño delay para que ya cargó el select
             } else {
                 Swal.fire('Error', data.msg, 'error');
             }
         });
 }
 
+let contactosGuardadosCache = [];
+
 function cargarContactosAdicionales(ruc) {
+    const select = document.getElementById('selectContactoGuardado');
     const cont = document.getElementById('listaContactosAdicionales');
-    if (!ruc) { cont.innerHTML = '<small class="text-muted fst-italic">Seleccione un cliente para ver sus contactos.</small>'; return; }
     
-    cont.innerHTML = '<small class="text-muted"><span class="spinner-border spinner-border-sm"></span> Cargando...</small>';
+    if (!ruc) {
+        select.innerHTML = '<option value="">-- Escribir manualmente / Sin contacto guardado --</option>';
+        cont.innerHTML = '';
+        contactosGuardadosCache = [];
+        return;
+    }
+    
+    select.innerHTML = '<option value="">Cargando...</option>';
     
     fetch(`/api/listar_contactos_cliente/${ruc}`)
         .then(r => r.json())
         .then(data => {
-            if (data.status !== 'success' || data.contactos.length === 0) {
-                cont.innerHTML = '<small class="text-muted fst-italic">Sin contactos adicionales registrados.</small>';
-                return;
-            }
-            let html = '<div class="list-group list-group-flush border rounded bg-white shadow-sm">';
-            data.contactos.forEach(c => {
-                html += `
-                    <div class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center small">
-                        <div>
-                            <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''}<br>
-                            <span class="text-muted">${c.telefono || ''} ${c.correo ? '· ' + c.correo : ''}</span>
-                        </div>
-                        <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminarContactoAdicional(${c.id}, '${ruc}')" title="Eliminar">
-                            <i class="bi bi-trash3"></i>
-                        </button>
-                    </div>`;
+            contactosGuardadosCache = (data.status === 'success') ? data.contactos : [];
+            
+            select.innerHTML = '<option value="">-- Escribir manualmente / Nuevo contacto --</option>';
+            contactosGuardadosCache.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.text = `${c.nombre}${c.area ? ' · ' + c.area : ''}`;
+                select.appendChild(opt);
             });
-            html += '</div>';
-            cont.innerHTML = html;
+            
+            renderizarListaContactosEditable();
         });
+}
+
+function renderizarListaContactosEditable() {
+    const cont = document.getElementById('listaContactosAdicionales');
+    const ruc = $('#cli_doc_select').val();
+    
+    if (contactosGuardadosCache.length === 0) {
+        cont.innerHTML = '<small class="text-muted fst-italic">Aún no tiene contactos guardados para este cliente. Use "Nuevo Contacto" o llene los campos y presione "Guardar".</small>';
+        return;
+    }
+    
+    let html = '<div class="list-group list-group-flush border rounded bg-white shadow-sm mt-1">';
+    contactosGuardadosCache.forEach(c => {
+        html += `
+            <div class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center small">
+                <div>
+                    <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''}<br>
+                    <span class="text-muted">${c.telefono || ''} ${c.correo ? '· ' + c.correo : ''}</span>
+                </div>
+                <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminarContactoAdicional(${c.id}, '${ruc}')" title="Eliminar">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </div>`;
+    });
+    html += '</div>';
+    cont.innerHTML = html;
+}
+
+function aplicarContactoSeleccionado() {
+    const id = document.getElementById('selectContactoGuardado').value;
+    if (!id) {
+        // Volvió a "manual": limpia los campos para que escriba uno nuevo
+        $('#cli_atte').val('');
+        $('#cli_tel').val('');
+        $('#cli_area').val('');
+        $('#cli_correo').val('');
+        return;
+    }
+    const contacto = contactosGuardadosCache.find(c => String(c.id) === String(id));
+    if (contacto) {
+        $('#cli_atte').val(contacto.nombre);
+        $('#cli_tel').val(contacto.telefono || '');
+        $('#cli_area').val(contacto.area || '');
+        $('#cli_correo').val(contacto.correo || '');
+    }
 }
 
 function eliminarContactoAdicional(id, ruc) {

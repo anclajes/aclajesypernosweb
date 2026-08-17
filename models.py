@@ -102,6 +102,10 @@ class ClientContact(db.Model):
     telefono = db.Column(db.String(20))
     area = db.Column(db.String(150))
     correo = db.Column(db.String(150))
+        # --- NUEVO: dueño del contacto (separación por vendedor) ---
+    creado_por_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    creado_por = db.relationship('User', foreign_keys=[creado_por_id])
+
     created_at = db.Column(db.DateTime, default=hora_peru)
     created_by = db.Column(db.String(50), default='Sistema')
 

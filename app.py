@@ -2750,9 +2750,17 @@ def listar_vendedores():
 def listar_contactos_cliente(documento):
     if session.get('user_id') is None: return {'status': 'error', 'contactos': []}, 403
     cliente = Client.query.filter_by(documento=documento).first()
-    if not cliente: return {'status': 'error', 'contactos': []}
+    if not cliente: return {'status': 'success', 'contactos': []}
     
-    contactos = ClientContact.query.filter_by(client_id=cliente.id).order_by(ClientContact.created_at.desc()).all()
+    rol = session.get('role')
+    user_id = session.get('user_id')
+    
+    query = ClientContact.query.filter_by(client_id=cliente.id)
+    if rol == 'vendedor':
+        # Cada vendedor SOLO ve los contactos que él mismo registró para este RUC
+        query = query.filter(ClientContact.creado_por_id == user_id)
+    
+    contactos = query.order_by(ClientContact.created_at.desc()).all()
     data = [{
         'id': c.id, 'nombre': c.nombre, 'telefono': c.telefono or '',
         'area': c.area or '', 'correo': c.correo or '',
@@ -2776,22 +2784,29 @@ def agregar_contacto_cliente():
     
     cliente = Client.query.filter_by(documento=documento).first()
     if not cliente:
-        return {'status': 'error', 'msg': 'Cliente no encontrado. Guarde el cliente principal primero.'}
+        return {'status': 'error', 'msg': 'Cliente no encontrado. Consulte el RUC primero.'}
     
     nuevo_contacto = ClientContact(
         client_id=cliente.id, nombre=nombre, telefono=telefono, area=area, correo=correo,
+        creado_por_id=session.get('user_id'),  # ✅ dueño del contacto
         created_at=hora_peru(), created_by=session.get('username', 'Sistema')
     )
     db.session.add(nuevo_contacto)
     db.session.commit()
     
-    return {'status': 'success', 'msg': 'Contacto adicional guardado.'}
+    return {'status': 'success', 'msg': 'Contacto guardado.', 'contacto_id': nuevo_contacto.id}
 
 
 @app.route('/api/eliminar_contacto_cliente/<int:contacto_id>', methods=['POST'])
 def eliminar_contacto_cliente(contacto_id):
     if session.get('user_id') is None: return {'status': 'error'}, 403
     contacto = ClientContact.query.get_or_404(contacto_id)
+    
+    # Seguridad: solo el dueño del contacto (o admin) puede borrarlo
+    rol = session.get('role')
+    if rol == 'vendedor' and contacto.creado_por_id != session.get('user_id'):
+        return {'status': 'error', 'msg': 'No tiene permiso para eliminar este contacto.'}, 403
+    
     db.session.delete(contacto)
     db.session.commit()
     return {'status': 'success'}
@@ -5417,19 +5432,17 @@ def fix_cliente_dueno_y_contactos():
         return f"<h2>❌ Error: {str(e)}</h2>"
 
 
-@app.route('/fix_asignar_clientes_huerfanos/<int:vendedor_id>')
-def fix_asignar_clientes_huerfanos(vendedor_id):
-    if session.get('role') not in ['admin', 'administracion']:
-        return "Acceso denegado", 403
-    
-    huerfanos = Client.query.filter(Client.creado_por_id.is_(None)).all()
-    contador = 0
-    for c in huerfanos:
-        c.creado_por_id = vendedor_id
-        contador += 1
-    db.session.commit()
-    
-    return f"<h2>✅ Se asignaron {contador} clientes huérfanos al usuario ID {vendedor_id}.</h2>"
+@app.route('/fix_contacto_dueno')
+def fix_contacto_dueno():
+    try:
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            try:
+                conn.execute(text('ALTER TABLE client_contact ADD COLUMN creado_por_id INTEGER'))
+            except Exception as e:
+                print(f"Aviso: {e}")
+        return "<h2>✅ Columna creado_por_id agregada a client_contact.</h2>"
+    except Exception as e:
+        return f"<h2>❌ Error: {str(e)}</h2>"
 
     
 # --- ARRANQUE DE LA APLICACIÓN ---
