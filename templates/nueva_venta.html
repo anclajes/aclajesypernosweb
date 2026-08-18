@@ -164,37 +164,47 @@
                         <input type="text" id="cli_distrito" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
                     </div>
 
-                    <div class="col-12 col-sm-6">
-                        <label class="small text-muted mb-1 fw-bold">Teléfono (Editable)</label>
-                        <input type="text" id="cli_tel" class="form-control form-control-sm border-success shadow-sm" placeholder="Ingrese teléfono...">
-                    </div>
-                    <div class="col-12 col-sm-6">
-                        <label class="small text-muted mb-1 fw-bold">Atención (Contacto)</label>
-                        <input type="text" id="cli_atte" class="form-control form-control-sm shadow-sm" placeholder="Ej: Sr. Juan">
-                    </div>
-                    <div class="col-12 col-sm-6">
-                        <label class="small text-muted mb-1 fw-bold">Área / Departamento Contacto</label>
-                        <input type="text" id="cli_area" class="form-control form-control-sm shadow-sm" placeholder="Ej: Logística, Compras...">
-                    </div>
-                    <div class="col-12 col-sm-6">
-                        <label class="small text-muted mb-1 fw-bold">Correo Electrónico</label>
-                        <input type="email" id="cli_correo" class="form-control form-control-sm shadow-sm" placeholder="correo@empresa.com">
-                    </div>
                     <div class="col-12">
                         <label class="small text-muted mb-1 fw-bold">Rubro del Cliente</label>
                         <input type="text" id="cli_rubro" class="form-control form-control-sm shadow-sm" placeholder="Ej: Minería, Construcción, Retail...">
+                        <small class="text-muted fst-italic" style="font-size: 0.7rem;">Este dato es de la empresa (RUC) y se guarda con el botón "Guardar".</small>
                     </div>
+
                     <div class="col-12 mt-2">
-                        <div class="d-flex justify-content-between align-items-center border-top pt-2">
-                            <label class="small text-muted mb-0 fw-bold"><i class="bi bi-person-lines-fill"></i> ¿A quién le cotizo?</label>
-                            <button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="window.abrirModalNuevoContacto()">
-                                <i class="bi bi-plus-lg"></i> Nuevo Contacto
+                        <div class="border-top pt-2 mb-1">
+                            <label class="small fw-bold text-dark mb-0"><i class="bi bi-person-lines-fill"></i> ¿A quién le cotizo?</label>
+                            <small class="d-block text-muted fst-italic" style="font-size: 0.7rem;">Elige un contacto guardado o crea uno nuevo. Estos datos van directo al PDF.</small>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <select id="selectContactoGuardado" class="form-select form-select-sm shadow-sm" onchange="aplicarContactoSeleccionado()">
+                                <option value="">-- Sin contacto seleccionado --</option>
+                            </select>
+                            <button type="button" class="btn btn-sm btn-outline-primary shadow-sm" onclick="window.abrirModalNuevoContacto()" title="Nuevo Contacto">
+                                <i class="bi bi-plus-lg"></i>
                             </button>
                         </div>
-                        <select id="selectContactoGuardado" class="form-select form-select-sm shadow-sm mt-1" onchange="aplicarContactoSeleccionado()">
-                            <option value="">-- Escribir manualmente / Sin contacto guardado --</option>
-                        </select>
-                        <div id="listaContactosAdicionales" class="mt-1"></div>
+
+                        <!-- Campos read-only: solo muestran el contacto elegido, no se editan aquí directo -->
+                        <div class="row g-2 mt-2">
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">Teléfono</label>
+                                <input type="text" id="cli_tel" class="form-control form-control-sm bg-light" readonly placeholder="Elija un contacto...">
+                            </div>
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">Área</label>
+                                <input type="text" id="cli_area" class="form-control form-control-sm bg-light" readonly placeholder="Elija un contacto...">
+                            </div>
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">Atención (Nombre)</label>
+                                <input type="text" id="cli_atte" class="form-control form-control-sm bg-light" readonly placeholder="Elija un contacto...">
+                            </div>
+                            <div class="col-6">
+                                <label class="small text-muted mb-1">Correo</label>
+                                <input type="text" id="cli_correo" class="form-control form-control-sm bg-light" readonly placeholder="Elija un contacto...">
+                            </div>
+                        </div>
+
+                        <div id="listaContactosAdicionales" class="mt-2"></div>
                     </div>
                     <div class="col-12">
                         <label class="small text-muted mb-1 fw-bold">O/C Cliente (Opcional)</label>
@@ -585,10 +595,11 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white py-2">
-                <h6 class="modal-title fw-bold small">Nuevo Contacto Adicional</h6>
+                <h6 class="modal-title fw-bold small" id="tituloModalContacto">Nuevo Contacto Adicional</h6>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <input type="hidden" id="contactoEditandoId" value="">
                 <label class="small fw-bold text-muted mb-1">Nombre *</label>
                 <input type="text" id="contactoNuevoNombre" class="form-control form-control-sm mb-2" placeholder="Ej: María Torres">
                 <label class="small fw-bold text-muted mb-1">Área / Cargo</label>
@@ -600,7 +611,7 @@
             </div>
             <div class="modal-footer p-2">
                 <button type="button" class="btn btn-primary btn-sm w-100" onclick="guardarNuevoContacto()">
-                    <i class="bi bi-save"></i> Guardar Contacto
+                    <i class="bi bi-save"></i> <span id="textoBotonGuardarContacto">Guardar Contacto</span>
                 </button>
             </div>
         </div>
@@ -2668,40 +2679,40 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
             if (data.nombre) {
                 $('#cli_nom').val(data.nombre).prop('readonly', true);
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
-                // LÓGICA DE COPIADO DE DIRECCIÓN PARA ENVÍO
                 $('#inputDireccionEntrega').val(data.direccion || '');
-                $('#cli_tel').val(data.telefono || '');
-                // NUEVOS CAMPOS DESDE BASE DE DATOS
+                
+                // ❌ QUITADO: $('#cli_tel').val(data.telefono || ''); (ya no viene de aquí)
+                
                 $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
                 $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
 
-                // --- NUEVO: autocompletar datos comerciales ---
-                $('#cli_atte').val(data.contacto_nombre || '');
-                $('#cli_area').val(data.area || '');
-                $('#cli_correo').val(data.correo || '');
                 $('#cli_rubro').val(data.rubro || '');
+                
+                // ✅ Limpiar campos de contacto ANTES de cargar
+                $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
 
-
-                // GUARDAR EN HIDDENS PARA EL BOTÓN VER FICHA
                 $('#hidden_estado').val(data.estado);   
                 $('#hidden_condicion').val(data.condicion);
 
                 if(typeof actualizarBadges === 'function') actualizarBadges(data.estado, data.condicion);
 
                 $('#lbl_origen_datos').html(`<i class="bi bi-database"></i> Sistema (${data.updated})`);
+                
+                // ✅ ÚNICA llamada, con la variable correcta: data.id (que es el RUC/documento)
                 cargarContactosAdicionales(data.id);
 
             } else {
-
-                $('#cli_nom').val("").prop('readonly', true); $('#cli_dir').val("").prop('readonly', true); $('#cli_tel').val(""); $('#lbl_origen_datos').html(`<i class="bi bi-pencil"></i> RUC Nuevo`);
+                $('#cli_nom').val("").prop('readonly', true); 
+                $('#cli_dir').val("").prop('readonly', true); 
+                $('#lbl_origen_datos').html(`<i class="bi bi-pencil"></i> RUC Nuevo`);
 
                 $('#inputDireccionEntrega').val("");
-                // LIMPIAR CAMPOS SI ES NUEVO
                 $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
-                $('#cli_area').val(""); $('#cli_correo').val(""); $('#cli_rubro').val("");
-                $('#cli_atte').val("");
+                $('#cli_rubro').val("");
+                $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
+                
                 cargarContactosAdicionales(null);
             }
         });
@@ -2782,17 +2793,23 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 function guardarSoloCliente() {
     const ruc = $('#cli_doc_select').val(); 
     const nombre = $('#cli_nom').val(); 
-    const atencion = $('#cli_atte').val().trim();
-    const contactoSeleccionado = $('#selectContactoGuardado').val();
+    const rubro = $('#cli_rubro').val().trim();
 
     if(!ruc || !nombre) return Swal.fire('Error', 'Debe haber un cliente cargado', 'warning');
     
-    // Si NO seleccionó un contacto existente y escribió un nombre nuevo, lo guarda como contacto nuevo
-    if (!contactoSeleccionado && atencion) {
-        guardarNuevoContactoDesdeFormulario();
-    } else {
-        Swal.fire({ icon: 'success', title: 'Datos verificados', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
-    }
+    let formData = new FormData(); 
+    formData.append('documento', ruc); 
+    formData.append('rubro', rubro);
+    
+    fetch('/api/actualizar_rubro_cliente', { method: 'POST', body: formData })
+        .then(r => r.json())
+        .then(data => { 
+            if(data.status === 'success') { 
+                Swal.fire({ icon: 'success', title: 'Rubro guardado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 }); 
+            } else { 
+                Swal.fire('Error', data.msg, 'error'); 
+            } 
+        });
 }
 
 function guardarNuevoContactoDesdeFormulario() {
@@ -2817,61 +2834,62 @@ function guardarNuevoContactoDesdeFormulario() {
 
 
 
-    function buscarClienteApi(force = false) {
-        let numero = $('#cli_doc_select').val(); 
-        if(!numero) return Swal.fire('Error', 'Escriba un número', 'warning');
+function buscarClienteApi(force = false) {
+    let numero = $('#cli_doc_select').val(); 
+    if(!numero) return Swal.fire('Error', 'Escriba un número', 'warning');
+    
+    const btn = document.getElementById('btnBuscarSunat'); 
+    const iconoOriginal = btn.innerHTML; 
+    btn.disabled = true; 
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    let formData = new FormData(); 
+    formData.append('numero', numero); 
+    if(force) formData.append('force', 'true');
+    
+    fetch('/api/consulta_documento', { method: 'POST', body: formData })
+    .then(r => r.json()).then(data => {
+        btn.disabled = false; btn.innerHTML = iconoOriginal;
         
-        const btn = document.getElementById('btnBuscarSunat'); 
-        const iconoOriginal = btn.innerHTML; 
-        btn.disabled = true; 
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-        
-        let formData = new FormData(); 
-        formData.append('numero', numero); 
-        if(force) formData.append('force', 'true');
-        
-        fetch('/api/consulta_documento', { method: 'POST', body: formData })
-        .then(r => r.json()).then(data => {
-            btn.disabled = false; btn.innerHTML = iconoOriginal;
+        if(data.status === 'success') {
+            $('#cli_nom').val(data.razon_social).prop('readonly', true); 
+            $('#cli_dir').val(data.direccion || '').prop('readonly', true);
+            $('#inputDireccionEntrega').val(data.direccion || '');
             
-            if(data.status === 'success') {
-                $('#cli_nom').val(data.razon_social).prop('readonly', true); 
-                $('#cli_dir').val(data.direccion || '').prop('readonly', true);
-                $('#inputDireccionEntrega').val(data.direccion || '');
-                if(data.telefono) $('#cli_tel').val(data.telefono);
-                
-                // --- ASEGÚRATE DE TENER ESTAS 4 LÍNEAS AQUÍ ---
-                $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
-                $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
-                $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
-                $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
-                $('#cli_atte').val(data.contacto_nombre || '');
-                // ----------------------------------------------
-                if (data.area) $('#cli_area').val(data.area);
-                if (data.correo) $('#cli_correo').val(data.correo);
-                if (data.rubro) $('#cli_rubro').val(data.rubro);
-                
-                $('#hidden_estado').val(data.estado);
-                $('#hidden_condicion').val(data.condicion);
-                
-                if(typeof actualizarBadges === 'function') {
-                    actualizarBadges(data.estado, data.condicion);
-                }
-                
-                let infoAudit = `Act: ${data.last_updated} (${data.updated_by})`;
-                let iconFuente = data.origen === 'BD' ? '<i class="bi bi-database"></i> BD Local' : '<i class="bi bi-cloud-download"></i> SUNAT';
-                $('#lbl_origen_datos').html(`${iconFuente} | <span class="text-primary">${infoAudit}</span>`);
-                cargarContactosAdicionales(numero);
-                
-            } else { 
-                Swal.fire('Aviso', data.msg, 'warning'); 
+            // ❌ QUITADO: ya no se llena cli_tel desde SUNAT (solo viene del contacto)
+            
+            $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
+            $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
+            $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
+            $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+            if (data.rubro) $('#cli_rubro').val(data.rubro);
+            
+            // ✅ Limpiar campos de contacto ANTES de cargar la lista de este cliente
+            $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
+            
+            $('#hidden_estado').val(data.estado);
+            $('#hidden_condicion').val(data.condicion);
+            
+            if(typeof actualizarBadges === 'function') {
+                actualizarBadges(data.estado, data.condicion);
             }
-        }).catch(err => { 
-            console.error(err); 
-            btn.disabled = false; btn.innerHTML = iconoOriginal; 
-            Swal.fire('Error', 'Fallo de conexión', 'error'); 
-        });
-    }
+            
+            let infoAudit = `Act: ${data.last_updated} (${data.updated_by})`;
+            let iconFuente = data.origen === 'BD' ? '<i class="bi bi-database"></i> BD Local' : '<i class="bi bi-cloud-download"></i> SUNAT';
+            $('#lbl_origen_datos').html(`${iconFuente} | <span class="text-primary">${infoAudit}</span>`);
+            
+            // ✅ ÚNICA llamada, con la variable correcta: numero
+            cargarContactosAdicionales(numero);
+            
+        } else { 
+            Swal.fire('Aviso', data.msg, 'warning'); 
+        }
+    }).catch(err => { 
+        console.error(err); 
+        btn.disabled = false; btn.innerHTML = iconoOriginal; 
+        Swal.fire('Error', 'Fallo de conexión', 'error'); 
+    });
+}
 
 
 
@@ -4841,19 +4859,37 @@ window.actualizarPrecioEnVivo = function(index, valor) {
     };
 
 
-window.abrirModalNuevoContacto = function() {
+window.abrirModalNuevoContacto = function(contactoId = null) {
     const ruc = $('#cli_doc_select').val();
     if (!ruc) return Swal.fire('Falta Cliente', 'Seleccione o guarde el cliente principal primero.', 'warning');
+    
+    document.getElementById('contactoEditandoId').value = '';
     document.getElementById('contactoNuevoNombre').value = '';
     document.getElementById('contactoNuevoArea').value = '';
     document.getElementById('contactoNuevoTelefono').value = '';
     document.getElementById('contactoNuevoCorreo').value = '';
+    document.getElementById('tituloModalContacto').innerText = 'Nuevo Contacto Adicional';
+    document.getElementById('textoBotonGuardarContacto').innerText = 'Guardar Contacto';
+
+    if (contactoId) {
+        const c = contactosGuardadosCache.find(x => String(x.id) === String(contactoId));
+        if (c) {
+            document.getElementById('contactoEditandoId').value = c.id;
+            document.getElementById('contactoNuevoNombre').value = c.nombre;
+            document.getElementById('contactoNuevoArea').value = c.area || '';
+            document.getElementById('contactoNuevoTelefono').value = c.telefono || '';
+            document.getElementById('contactoNuevoCorreo').value = c.correo || '';
+            document.getElementById('tituloModalContacto').innerText = 'Editar Contacto';
+            document.getElementById('textoBotonGuardarContacto').innerText = 'Guardar Cambios';
+        }
+    }
     new bootstrap.Modal(document.getElementById('modalNuevoContacto')).show();
 }
 
 function guardarNuevoContacto() {
     const ruc = $('#cli_doc_select').val();
     const nombre = document.getElementById('contactoNuevoNombre').value.trim();
+    const contactoId = document.getElementById('contactoEditandoId').value;
     if (!nombre) return Swal.fire('Falta Nombre', 'El nombre del contacto es obligatorio.', 'warning');
 
     let fd = new FormData();
@@ -4862,18 +4898,19 @@ function guardarNuevoContacto() {
     fd.append('area', document.getElementById('contactoNuevoArea').value.trim());
     fd.append('telefono', document.getElementById('contactoNuevoTelefono').value.trim());
     fd.append('correo', document.getElementById('contactoNuevoCorreo').value.trim());
+    if (contactoId) fd.append('contacto_id', contactoId);
 
     fetch('/api/agregar_contacto_cliente', { method: 'POST', body: fd })
         .then(r => r.json())
         .then(data => {
             if (data.status === 'success') {
                 bootstrap.Modal.getInstance(document.getElementById('modalNuevoContacto')).hide();
-                Swal.fire({ icon: 'success', title: 'Contacto agregado', toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
+                Swal.fire({ icon: 'success', title: data.msg, toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                 
                 cargarContactosAdicionales(ruc);
                 setTimeout(() => {
                     $('#selectContactoGuardado').val(data.contacto_id).trigger('change');
-                }, 300); // pequeño delay para que ya cargó el select
+                }, 300);
             } else {
                 Swal.fire('Error', data.msg, 'error');
             }
@@ -4886,8 +4923,10 @@ function cargarContactosAdicionales(ruc) {
     const select = document.getElementById('selectContactoGuardado');
     const cont = document.getElementById('listaContactosAdicionales');
     
+    // ✅ Reset inmediato del selector antes de cargar
+    select.innerHTML = '<option value="">-- Sin contacto seleccionado --</option>';
+    
     if (!ruc) {
-        select.innerHTML = '<option value="">-- Escribir manualmente / Sin contacto guardado --</option>';
         cont.innerHTML = '';
         contactosGuardadosCache = [];
         return;
@@ -4917,7 +4956,7 @@ function renderizarListaContactosEditable() {
     const ruc = $('#cli_doc_select').val();
     
     if (contactosGuardadosCache.length === 0) {
-        cont.innerHTML = '<small class="text-muted fst-italic">Aún no tiene contactos guardados para este cliente. Use "Nuevo Contacto" o llene los campos y presione "Guardar".</small>';
+        cont.innerHTML = '<small class="text-muted fst-italic">Aún no tiene contactos guardados para este cliente. Use el botón "+" para crear el primero.</small>';
         return;
     }
     
@@ -4929,9 +4968,14 @@ function renderizarListaContactosEditable() {
                     <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''}<br>
                     <span class="text-muted">${c.telefono || ''} ${c.correo ? '· ' + c.correo : ''}</span>
                 </div>
-                <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminarContactoAdicional(${c.id}, '${ruc}')" title="Eliminar">
-                    <i class="bi bi-trash3"></i>
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-link text-primary p-0 me-2" onclick="window.abrirModalNuevoContacto(${c.id})" title="Editar">
+                        <i class="bi bi-pencil-square"></i>
+                    </button>
+                    <button class="btn btn-sm btn-link text-danger p-0" onclick="eliminarContactoAdicional(${c.id}, '${ruc}')" title="Eliminar">
+                        <i class="bi bi-trash3"></i>
+                    </button>
+                </div>
             </div>`;
     });
     html += '</div>';

@@ -679,6 +679,23 @@ def actualizar_telefono_cliente():
     
     return {'status': 'error', 'msg': 'Cliente no encontrado en BD'}
 
+@app.route('/api/actualizar_rubro_cliente', methods=['POST'])
+def actualizar_rubro_cliente():
+    if session.get('user_id') is None: return {'status': 'error'}, 403
+    
+    doc = request.form.get('documento')
+    rubro = request.form.get('rubro', '').strip()
+    
+    cliente = Client.query.filter_by(documento=doc).first()
+    if cliente:
+        cliente.rubro = rubro
+        cliente.last_updated = hora_peru()
+        cliente.updated_by = session.get('username', 'Sistema')
+        db.session.commit()
+        return {'status': 'success'}
+    
+    return {'status': 'error', 'msg': 'Cliente no encontrado en BD'}
+
 # --- AGREGAR ESTA FUNCIÓN EN APP.PY (Cerca de las otras APIs) ---
 # --- EN APP.PY ---
 
@@ -2778,6 +2795,7 @@ def agregar_contacto_cliente():
     telefono = request.form.get('telefono', '').strip()
     area = request.form.get('area', '').strip()
     correo = request.form.get('correo', '').strip()
+    contacto_id = request.form.get('contacto_id', '').strip()  # si viene, es edición
     
     if not documento or not nombre:
         return {'status': 'error', 'msg': 'El nombre del contacto es obligatorio.'}
@@ -2786,9 +2804,39 @@ def agregar_contacto_cliente():
     if not cliente:
         return {'status': 'error', 'msg': 'Cliente no encontrado. Consulte el RUC primero.'}
     
+    user_id = session.get('user_id')
+    
+    # --- VALIDACIÓN: no permitir nombre duplicado (para el mismo vendedor y cliente) ---
+    query_duplicado = ClientContact.query.filter(
+        ClientContact.client_id == cliente.id,
+        ClientContact.creado_por_id == user_id,
+        func.lower(ClientContact.nombre) == nombre.lower()
+    )
+    if contacto_id:
+        query_duplicado = query_duplicado.filter(ClientContact.id != int(contacto_id))
+    
+    if query_duplicado.first():
+        return {'status': 'error', 'msg': f'Ya tienes un contacto guardado con el nombre "{nombre}" para este cliente.'}
+    
+    # --- EDICIÓN ---
+    if contacto_id:
+        contacto = ClientContact.query.get(int(contacto_id))
+        if not contacto:
+            return {'status': 'error', 'msg': 'Contacto no encontrado.'}
+        if contacto.creado_por_id != user_id and session.get('role') == 'vendedor':
+            return {'status': 'error', 'msg': 'No tiene permiso para editar este contacto.'}
+        
+        contacto.nombre = nombre
+        contacto.telefono = telefono
+        contacto.area = area
+        contacto.correo = correo
+        db.session.commit()
+        return {'status': 'success', 'msg': 'Contacto actualizado.', 'contacto_id': contacto.id}
+    
+    # --- CREACIÓN ---
     nuevo_contacto = ClientContact(
         client_id=cliente.id, nombre=nombre, telefono=telefono, area=area, correo=correo,
-        creado_por_id=session.get('user_id'),  # ✅ dueño del contacto
+        creado_por_id=user_id,
         created_at=hora_peru(), created_by=session.get('username', 'Sistema')
     )
     db.session.add(nuevo_contacto)
