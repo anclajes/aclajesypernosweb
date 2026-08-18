@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent, ClientContact
+from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent, ClientContact, ClientContactLog, ClientRubroVendedor
 from models import ProductImportBolts, CategoryImportBolts, ProductMovementImportBolts
 from models import ProductMovement
 from models import Payment
@@ -685,16 +685,34 @@ def actualizar_rubro_cliente():
     
     doc = request.form.get('documento')
     rubro = request.form.get('rubro', '').strip()
+    user_id = session.get('user_id')
     
     cliente = Client.query.filter_by(documento=doc).first()
-    if cliente:
-        cliente.rubro = rubro
-        cliente.last_updated = hora_peru()
-        cliente.updated_by = session.get('username', 'Sistema')
-        db.session.commit()
-        return {'status': 'success'}
+    if not cliente:
+        return {'status': 'error', 'msg': 'Cliente no encontrado en BD'}
     
-    return {'status': 'error', 'msg': 'Cliente no encontrado en BD'}
+    registro = ClientRubroVendedor.query.filter_by(client_id=cliente.id, vendedor_id=user_id).first()
+    if not registro:
+        registro = ClientRubroVendedor(client_id=cliente.id, vendedor_id=user_id, rubro=rubro, updated_at=hora_peru())
+        db.session.add(registro)
+    else:
+        registro.rubro = rubro
+        registro.updated_at = hora_peru()
+    
+    db.session.commit()
+    return {'status': 'success'}
+
+@app.route('/api/obtener_rubro_cliente/<documento>')
+def obtener_rubro_cliente(documento):
+    if session.get('user_id') is None: return {'status': 'error', 'rubro': ''}, 403
+    
+    cliente = Client.query.filter_by(documento=documento).first()
+    if not cliente: return {'status': 'success', 'rubro': ''}
+    
+    user_id = session.get('user_id')
+    registro = ClientRubroVendedor.query.filter_by(client_id=cliente.id, vendedor_id=user_id).first()
+    
+    return {'status': 'success', 'rubro': registro.rubro if registro else ''}
 
 # --- AGREGAR ESTA FUNCIÓN EN APP.PY (Cerca de las otras APIs) ---
 # --- EN APP.PY ---
@@ -2786,6 +2804,17 @@ def listar_contactos_cliente(documento):
     return {'status': 'success', 'contactos': data}
 
 
+def registrar_log_contacto(client_id, contact_id, accion, nombre='', telefono='', area='', correo='',
+                             nombre_anterior=None, telefono_anterior=None, area_anterior=None, correo_anterior=None):
+    log = ClientContactLog(
+        client_id=client_id, contact_id=contact_id, accion=accion,
+        nombre=nombre, telefono=telefono, area=area, correo=correo,
+        nombre_anterior=nombre_anterior, telefono_anterior=telefono_anterior,
+        area_anterior=area_anterior, correo_anterior=correo_anterior,
+        realizado_por_id=session.get('user_id'), fecha=hora_peru()
+    )
+    db.session.add(log)
+
 @app.route('/api/agregar_contacto_cliente', methods=['POST'])
 def agregar_contacto_cliente():
     if session.get('user_id') is None: return {'status': 'error', 'msg': 'No autorizado'}, 403
@@ -2795,7 +2824,7 @@ def agregar_contacto_cliente():
     telefono = request.form.get('telefono', '').strip()
     area = request.form.get('area', '').strip()
     correo = request.form.get('correo', '').strip()
-    contacto_id = request.form.get('contacto_id', '').strip()  # si viene, es edición
+    contacto_id = request.form.get('contacto_id', '').strip()
     
     if not documento or not nombre:
         return {'status': 'error', 'msg': 'El nombre del contacto es obligatorio.'}
@@ -2806,7 +2835,6 @@ def agregar_contacto_cliente():
     
     user_id = session.get('user_id')
     
-    # --- VALIDACIÓN: no permitir nombre duplicado (para el mismo vendedor y cliente) ---
     query_duplicado = ClientContact.query.filter(
         ClientContact.client_id == cliente.id,
         ClientContact.creado_por_id == user_id,
@@ -2814,7 +2842,6 @@ def agregar_contacto_cliente():
     )
     if contacto_id:
         query_duplicado = query_duplicado.filter(ClientContact.id != int(contacto_id))
-    
     if query_duplicado.first():
         return {'status': 'error', 'msg': f'Ya tienes un contacto guardado con el nombre "{nombre}" para este cliente.'}
     
@@ -2825,6 +2852,14 @@ def agregar_contacto_cliente():
             return {'status': 'error', 'msg': 'Contacto no encontrado.'}
         if contacto.creado_por_id != user_id and session.get('role') == 'vendedor':
             return {'status': 'error', 'msg': 'No tiene permiso para editar este contacto.'}
+        
+        # Guardamos snapshot ANTES de sobrescribir
+        registrar_log_contacto(
+            cliente.id, contacto.id, 'EDITADO',
+            nombre=nombre, telefono=telefono, area=area, correo=correo,
+            nombre_anterior=contacto.nombre, telefono_anterior=contacto.telefono,
+            area_anterior=contacto.area, correo_anterior=contacto.correo
+        )
         
         contacto.nombre = nombre
         contacto.telefono = telefono
@@ -2840,8 +2875,11 @@ def agregar_contacto_cliente():
         created_at=hora_peru(), created_by=session.get('username', 'Sistema')
     )
     db.session.add(nuevo_contacto)
-    db.session.commit()
+    db.session.flush()
     
+    registrar_log_contacto(cliente.id, nuevo_contacto.id, 'CREADO', nombre=nombre, telefono=telefono, area=area, correo=correo)
+    
+    db.session.commit()
     return {'status': 'success', 'msg': 'Contacto guardado.', 'contacto_id': nuevo_contacto.id}
 
 
@@ -2850,14 +2888,51 @@ def eliminar_contacto_cliente(contacto_id):
     if session.get('user_id') is None: return {'status': 'error'}, 403
     contacto = ClientContact.query.get_or_404(contacto_id)
     
-    # Seguridad: solo el dueño del contacto (o admin) puede borrarlo
     rol = session.get('role')
     if rol == 'vendedor' and contacto.creado_por_id != session.get('user_id'):
         return {'status': 'error', 'msg': 'No tiene permiso para eliminar este contacto.'}, 403
     
+    # Guardamos el snapshot ANTES de borrar, con referencia al ID (aunque después ya no exista)
+    registrar_log_contacto(
+        contacto.client_id, contacto.id, 'ELIMINADO',
+        nombre=contacto.nombre, telefono=contacto.telefono, area=contacto.area, correo=contacto.correo
+    )
+    
     db.session.delete(contacto)
     db.session.commit()
     return {'status': 'success'}
+
+@app.route('/api/historial_contactos_cliente/<documento>')
+def historial_contactos_cliente(documento):
+    if session.get('user_id') is None: return {'status': 'error', 'logs': []}, 403
+    
+    cliente = Client.query.filter_by(documento=documento).first()
+    if not cliente: return {'status': 'success', 'logs': []}
+    
+    rol = session.get('role')
+    user_id = session.get('user_id')
+    
+    query = ClientContactLog.query.filter_by(client_id=cliente.id)
+    if rol == 'vendedor':
+        query = query.filter(ClientContactLog.realizado_por_id == user_id)
+    
+    logs = query.order_by(ClientContactLog.fecha.desc()).all()
+    
+    data = [{
+        'accion': l.accion,
+        'nombre': l.nombre,
+        'telefono': l.telefono or '-',
+        'area': l.area or '-',
+        'correo': l.correo or '-',
+        'nombre_anterior': l.nombre_anterior,
+        'telefono_anterior': l.telefono_anterior,
+        'area_anterior': l.area_anterior,
+        'correo_anterior': l.correo_anterior,
+        'usuario': l.realizado_por.nombre_completo if l.realizado_por else 'Sistema',
+        'fecha': l.fecha.strftime('%d/%m/%Y %H:%M') if l.fecha else '-'
+    } for l in logs]
+    
+    return {'status': 'success', 'logs': data}
 
 # --- 1. API PARA PREVISUALIZAR LA LISTA COMPLETA ---
 @app.route('/api/preview_minimos', methods=['POST'])
@@ -5480,15 +5555,11 @@ def fix_cliente_dueno_y_contactos():
         return f"<h2>❌ Error: {str(e)}</h2>"
 
 
-@app.route('/fix_contacto_dueno')
-def fix_contacto_dueno():
+@app.route('/fix_auditoria_contactos')
+def fix_auditoria_contactos():
     try:
-        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            try:
-                conn.execute(text('ALTER TABLE client_contact ADD COLUMN creado_por_id INTEGER'))
-            except Exception as e:
-                print(f"Aviso: {e}")
-        return "<h2>✅ Columna creado_por_id agregada a client_contact.</h2>"
+        db.create_all()  # crea client_contact_log y client_rubro_vendedor
+        return "<h2>✅ Tablas de auditoría de contactos y rubro por vendedor creadas.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
 

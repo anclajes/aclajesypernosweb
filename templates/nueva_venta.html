@@ -882,6 +882,19 @@
     </div>
 </div>
 
+<div class="modal fade" id="modalHistorialContactos" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-2">
+                <h6 class="modal-title fw-bold small"><i class="bi bi-clock-history"></i> Historial de Contactos</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="bodyHistorialContactos" class="p-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
 
@@ -2688,7 +2701,9 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
 
-                $('#cli_rubro').val(data.rubro || '');
+                fetch(`/api/obtener_rubro_cliente/${numero}`)  // o `${data.id}` en select2:select
+                    .then(r => r.json())
+                    .then(res => { $('#cli_rubro').val(res.rubro || ''); });
                 
                 // ✅ Limpiar campos de contacto ANTES de cargar
                 $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
@@ -2862,7 +2877,9 @@ function buscarClienteApi(force = false) {
             $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
             $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
             $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
-            if (data.rubro) $('#cli_rubro').val(data.rubro);
+            fetch(`/api/obtener_rubro_cliente/${numero}`)  // o `${data.id}` en select2:select
+                .then(r => r.json())
+                .then(res => { $('#cli_rubro').val(res.rubro || ''); });
             
             // ✅ Limpiar campos de contacto ANTES de cargar la lista de este cliente
             $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
@@ -4557,6 +4574,10 @@ function cargarClientesDirectorio() {
                                 <i class="bi bi-check2-square"></i> Usar
                             </button>
                         </td>
+                        <button class="btn btn-sm btn-outline-secondary fw-bold py-0 ms-1" 
+                            onclick="verHistorialContactos('${c.documento}')" title="Ver historial de cambios">
+                            <i class="bi bi-clock-history"></i>
+                        </button>
                     </tr>
                 `;
                 tbody.insertAdjacentHTML('beforeend', fila);
@@ -5017,6 +5038,49 @@ function descargarExcelDirectorio() {
     const filtroVal = filtroSel ? filtroSel.value : '';
     const url = filtroVal ? `/exportar_directorio_clientes?filtro_vendedor=${filtroVal}` : '/exportar_directorio_clientes';
     window.open(url, '_blank');
+}
+
+function verHistorialContactos(ruc) {
+    document.getElementById('bodyHistorialContactos').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    new bootstrap.Modal(document.getElementById('modalHistorialContactos')).show();
+    
+    fetch(`/api/historial_contactos_cliente/${ruc}`)
+        .then(r => r.json())
+        .then(res => {
+            const cont = document.getElementById('bodyHistorialContactos');
+            if (!res.logs || res.logs.length === 0) {
+                cont.innerHTML = '<p class="text-muted text-center py-3">Sin movimientos registrados.</p>';
+                return;
+            }
+            
+            let html = '<div class="list-group list-group-flush">';
+            res.logs.forEach(l => {
+                let colorBadge = l.accion === 'CREADO' ? 'success' : (l.accion === 'EDITADO' ? 'warning' : 'danger');
+                let icono = l.accion === 'CREADO' ? 'bi-plus-circle' : (l.accion === 'EDITADO' ? 'bi-pencil' : 'bi-trash3');
+                
+                html += `<div class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="badge bg-${colorBadge}"><i class="bi ${icono}"></i> ${l.accion}</span>
+                        <small class="text-muted">${l.fecha} · ${l.usuario}</small>
+                    </div>
+                    <div class="mt-1 small">
+                        <strong>${l.nombre}</strong> ${l.area !== '-' ? '· ' + l.area : ''}<br>
+                        <span class="text-muted">${l.telefono !== '-' ? l.telefono : ''} ${l.correo !== '-' ? '· ' + l.correo : ''}</span>
+                    </div>`;
+                
+                if (l.accion === 'EDITADO' && l.nombre_anterior) {
+                    html += `<div class="mt-1 small text-muted fst-italic border-top pt-1">
+                        Antes: ${l.nombre_anterior} ${l.area_anterior ? '· ' + l.area_anterior : ''} 
+                        ${l.telefono_anterior ? '· ' + l.telefono_anterior : ''} 
+                        ${l.correo_anterior ? '· ' + l.correo_anterior : ''}
+                    </div>`;
+                }
+                
+                html += `</div>`;
+            });
+            html += '</div>';
+            cont.innerHTML = html;
+        });
 }
 
 </script>

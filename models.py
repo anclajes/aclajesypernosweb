@@ -111,6 +111,47 @@ class ClientContact(db.Model):
 
     client = db.relationship('Client', backref=db.backref('contactos_adicionales', cascade="all, delete-orphan"))
 
+# --- NUEVO: AUDITORÍA DE CONTACTOS (sobrevive aunque se borre el contacto) ---
+class ClientContactLog(db.Model):
+    __tablename__ = 'client_contact_log'
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    contact_id = db.Column(db.Integer, nullable=True)  # referencia informativa, no FK (puede ya no existir)
+    
+    accion = db.Column(db.String(20), nullable=False)  # CREADO, EDITADO, ELIMINADO
+    
+    # Snapshot de los datos en el momento de la acción
+    nombre = db.Column(db.String(150))
+    telefono = db.Column(db.String(20))
+    area = db.Column(db.String(150))
+    correo = db.Column(db.String(150))
+    
+    # Para EDITADO: qué tenía antes (útil para ver el cambio exacto)
+    nombre_anterior = db.Column(db.String(150), nullable=True)
+    telefono_anterior = db.Column(db.String(20), nullable=True)
+    area_anterior = db.Column(db.String(150), nullable=True)
+    correo_anterior = db.Column(db.String(150), nullable=True)
+    
+    realizado_por_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    realizado_por = db.relationship('User', foreign_keys=[realizado_por_id])
+    fecha = db.Column(db.DateTime, default=hora_peru)
+    
+    client = db.relationship('Client', backref='contact_logs')
+
+# --- NUEVO: RUBRO POR VENDEDOR (cada vendedor tiene su propia clasificación del cliente) ---
+class ClientRubroVendedor(db.Model):
+    __tablename__ = 'client_rubro_vendedor'
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey('client.id'), nullable=False)
+    vendedor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    rubro = db.Column(db.String(150), nullable=True)
+    updated_at = db.Column(db.DateTime, default=hora_peru)
+    
+    client = db.relationship('Client', backref='rubros_por_vendedor')
+    vendedor = db.relationship('User', foreign_keys=[vendedor_id])
+    
+    __table_args__ = (db.UniqueConstraint('client_id', 'vendedor_id', name='uq_client_vendedor_rubro'),)
+
 # EN MODELS.PY
 
 class Order(db.Model):
