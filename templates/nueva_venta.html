@@ -4543,17 +4543,18 @@ function cargarClientesDirectorio() {
                 const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
 
                 let extraInfo = '';
-                if (c.rubro || c.correo || c.area) {
+                if (c.rubro || c.cant_contactos > 0) {
                     extraInfo = `<div class="text-muted mt-1" style="font-size: 0.7rem;">
                         ${c.rubro ? '<i class="bi bi-briefcase"></i> ' + c.rubro + ' &nbsp;' : ''}
-                        ${c.area ? '<i class="bi bi-diagram-3"></i> ' + c.area + ' &nbsp;' : ''}
-                        ${c.correo ? '<i class="bi bi-envelope"></i> ' + c.correo : ''}
+                        ${c.cant_contactos > 0 ? '<i class="bi bi-person-lines-fill"></i> ' + c.cant_contactos + ' contacto(s)' : '<span class="fst-italic">Sin contactos aún</span>'}
                     </div>`;
+                } else {
+                    extraInfo = `<div class="text-muted mt-1 fst-italic" style="font-size: 0.7rem;">Sin rubro ni contactos aún</div>`;
                 }
 
                 let vendedorInfo = '';
                 {% if session.get('role') in ['admin', 'administracion'] %}
-                vendedorInfo = `<div class="text-primary mt-1" style="font-size: 0.7rem;"><i class="bi bi-person-badge"></i> ${c.vendedor_dueno || 'Sin asignar'}</div>`;
+                vendedorInfo = `<div class="text-primary mt-1" style="font-size: 0.7rem;"><i class="bi bi-person-badge"></i> ${c.vendedor_dueno}</div>`;
                 {% endif %}
                 
                 const fila = `
@@ -4569,15 +4570,17 @@ function cargarClientesDirectorio() {
                             ${fechaAudit}<br><span class="fst-italic">Por: ${userAudit}</span>
                         </td>
                         <td class="text-end">
-                            <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-                                onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')">
-                                <i class="bi bi-check2-square"></i> Usar
-                            </button>
+                            <div class="d-flex gap-1 justify-content-end">
+                                <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
+                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')" title="Usar este cliente">
+                                    <i class="bi bi-check2-square"></i> Usar
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary py-0" 
+                                    onclick="verHistorialContactos('${c.documento}')" title="Ver historial de cambios">
+                                    <i class="bi bi-clock-history"></i>
+                                </button>
+                            </div>
                         </td>
-                        <button class="btn btn-sm btn-outline-secondary fw-bold py-0 ms-1" 
-                            onclick="verHistorialContactos('${c.documento}')" title="Ver historial de cambios">
-                            <i class="bi bi-clock-history"></i>
-                        </button>
                     </tr>
                 `;
                 tbody.insertAdjacentHTML('beforeend', fila);

@@ -1119,6 +1119,33 @@ def exportar_directorio_clientes():
         download_name=nombre_archivo
     )
 
+def get_client_ids_para_vendedor(vendedor_id):
+    """Todos los RUC con los que este vendedor tiene alguna relación: creador, contacto propio, o rubro propio."""
+    ids = set()
+    ids.update(c.id for c in Client.query.filter_by(creado_por_id=vendedor_id).all())
+    ids.update(ct.client_id for ct in ClientContact.query.filter_by(creado_por_id=vendedor_id).all())
+    ids.update(r.client_id for r in ClientRubroVendedor.query.filter_by(vendedor_id=vendedor_id).all())
+    return ids
+
+
+def armar_fila_directorio(client_obj, vendedor_id, vendedor_nombre):
+    cant_contactos = ClientContact.query.filter_by(client_id=client_obj.id, creado_por_id=vendedor_id).count()
+    rubro_reg = ClientRubroVendedor.query.filter_by(client_id=client_obj.id, vendedor_id=vendedor_id).first()
+    return {
+        'documento': client_obj.documento,
+        'nombre': client_obj.nombre,
+        'direccion': client_obj.direccion or '',
+        'estado': client_obj.estado,
+        'condicion': client_obj.condicion,
+        'rubro': rubro_reg.rubro if rubro_reg and rubro_reg.rubro else '',
+        'cant_contactos': cant_contactos,
+        'vendedor_dueno': vendedor_nombre or 'Sin asignar',
+        'vendedor_dueno_id': vendedor_id,
+        'updated_at': client_obj.last_updated.strftime('%d/%m/%Y %H:%M') if client_obj.last_updated else '-',
+        'updated_by': client_obj.updated_by
+    }
+
+
 # --- NUEVA RUTA: DESCARGAR PLANTILLA VACÍA ---
 @app.route('/producto/plantilla')
 def descargar_plantilla():
@@ -2739,40 +2766,65 @@ def listar_todos_clientes():
     rol = session.get('role')
     user_id = session.get('user_id')
     
-    query = Client.query
+    data = []
     
     if rol == 'vendedor':
-        # Un vendedor SOLO ve los clientes que él mismo registró
-        query = query.filter(Client.creado_por_id == user_id)
+        # Solo su propia vista: 1 fila por RUC con el que él tiene relación
+        ids_relacionados = get_client_ids_para_vendedor(user_id)
+        if ids_relacionados:
+            clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+            nombre_yo = User.query.get(user_id).nombre_completo
+            for c in clientes:
+                data.append(armar_fila_directorio(c, user_id, nombre_yo))
+    
     else:
-        # Admin/Administración: puede filtrar por vendedor específico, por "mios", o ver todos
+        # Admin / Administración
         filtro_vendedor = request.args.get('filtro_vendedor')
+        
         if filtro_vendedor == 'mios':
-            query = query.filter(Client.creado_por_id == user_id)
+            ids_relacionados = get_client_ids_para_vendedor(user_id)
+            if ids_relacionados:
+                clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+                nombre_yo = User.query.get(user_id).nombre_completo
+                for c in clientes:
+                    data.append(armar_fila_directorio(c, user_id, nombre_yo))
+        
         elif filtro_vendedor and filtro_vendedor != 'todos':
-            query = query.filter(Client.creado_por_id == filtro_vendedor)
-        # si es 'todos' o vacío, no filtra
+            v_id = int(filtro_vendedor)
+            ids_relacionados = get_client_ids_para_vendedor(v_id)
+            if ids_relacionados:
+                clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+                vendedor_obj = User.query.get(v_id)
+                nombre_v = vendedor_obj.nombre_completo if vendedor_obj else 'Sin asignar'
+                for c in clientes:
+                    data.append(armar_fila_directorio(c, v_id, nombre_v))
+        
+        else:
+            # "Todos": una fila POR CADA (cliente, vendedor) relacionado — puede repetir RUC
+            relacion_por_cliente = {}  # client_id -> set(vendedor_ids)
+            
+            for c in Client.query.filter(Client.creado_por_id.isnot(None)).all():
+                relacion_por_cliente.setdefault(c.id, set()).add(c.creado_por_id)
+            for ct in ClientContact.query.filter(ClientContact.creado_por_id.isnot(None)).all():
+                relacion_por_cliente.setdefault(ct.client_id, set()).add(ct.creado_por_id)
+            for r in ClientRubroVendedor.query.all():
+                relacion_por_cliente.setdefault(r.client_id, set()).add(r.vendedor_id)
+            
+            ids_clientes = list(relacion_por_cliente.keys())
+            ids_vendedores = list({v for vs in relacion_por_cliente.values() for v in vs})
+            
+            mapa_clientes = {c.id: c for c in Client.query.filter(Client.id.in_(ids_clientes)).all()} if ids_clientes else {}
+            mapa_usuarios = {u.id: u for u in User.query.filter(User.id.in_(ids_vendedores)).all()} if ids_vendedores else {}
+            
+            for client_id, vendedores in relacion_por_cliente.items():
+                c = mapa_clientes.get(client_id)
+                if not c: continue
+                for v_id in vendedores:
+                    vendedor_obj = mapa_usuarios.get(v_id)
+                    nombre_v = vendedor_obj.nombre_completo if vendedor_obj else 'Sin asignar'
+                    data.append(armar_fila_directorio(c, v_id, nombre_v))
     
-    clientes = query.order_by(Client.last_updated.desc()).all()
-    
-    data = []
-    for c in clientes:
-        data.append({
-            'documento': c.documento,
-            'nombre': c.nombre,
-            'direccion': c.direccion or '',
-            'telefono': c.telefono or '',
-            'estado': c.estado,
-            'condicion': c.condicion,
-            'area': c.area or '',
-            'correo': c.correo or '',
-            'rubro': c.rubro or '',
-            'vendedor_dueno': c.creado_por.nombre_completo if c.creado_por else 'Sin asignar',
-            'vendedor_dueno_id': c.creado_por_id or '',
-            'updated_at': c.last_updated.strftime('%d/%m/%Y %H:%M'),
-            'updated_by': c.updated_by
-        })
-    
+    data.sort(key=lambda x: (x['nombre'], x['vendedor_dueno']))
     return {'data': data}
 
 @app.route('/api/listar_vendedores')
