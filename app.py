@@ -709,23 +709,13 @@ def obtener_rubro_cliente(documento):
     cliente = Client.query.filter_by(documento=documento).first()
     if not cliente: return {'status': 'success', 'rubro': ''}
     
-    rol = session.get('role')
     user_id = session.get('user_id')
     vendedor_id_param = request.args.get('vendedor_id')
     
-    if vendedor_id_param:
-        target_id = int(vendedor_id_param)
-    else:
-        target_id = user_id  # comportamiento normal: cada quien ve el suyo
+    target_id = int(vendedor_id_param) if vendedor_id_param else user_id  # ✅ ya estaba bien, se confirma
     
     registro = ClientRubroVendedor.query.filter_by(client_id=cliente.id, vendedor_id=target_id).first()
     return {'status': 'success', 'rubro': registro.rubro if registro else ''}
-
-# --- AGREGAR ESTA FUNCIÓN EN APP.PY (Cerca de las otras APIs) ---
-# --- EN APP.PY ---
-
-# --- FUNCIÓN INTELIGENTE (CACHÉ) ---
-# --- EN APP.PY ---
 
 # --- EN APP.PY ---
 
@@ -2882,27 +2872,24 @@ def listar_contactos_cliente(documento):
     cliente = Client.query.filter_by(documento=documento).first()
     if not cliente: return {'status': 'success', 'contactos': []}
     
-    rol = session.get('role')
     user_id = session.get('user_id')
-    
-    # Si viene un vendedor_id explícito en la URL (desde el Directorio), se usa ese.
-    # Si no viene y el rol es vendedor, se usa su propio ID.
-    # Si no viene y es admin, por defecto no filtra (comportamiento libre fuera del Directorio).
     vendedor_id_param = request.args.get('vendedor_id')
     
     query = ClientContact.query.filter_by(client_id=cliente.id)
     
     if vendedor_id_param:
+        # Viene explícito desde el Directorio (fila de un vendedor específico)
         query = query.filter(ClientContact.creado_por_id == int(vendedor_id_param))
-    elif rol == 'vendedor':
+    else:
+        # ✅ FIX: sin contexto explícito, TODOS (admin o vendedor) ven solo lo suyo
         query = query.filter(ClientContact.creado_por_id == user_id)
-    # admin sin vendedor_id explícito: sin filtro (caso de búsqueda libre por RUC, no desde Directorio)
     
     contactos = query.order_by(ClientContact.created_at.desc()).all()
     data = [{
         'id': c.id, 'nombre': c.nombre, 'telefono': c.telefono or '',
         'area': c.area or '', 'correo': c.correo or '',
-        'fecha': c.created_at.strftime('%d/%m/%Y') if c.created_at else ''
+        'fecha': c.created_at.strftime('%d/%m/%Y') if c.created_at else '',
+        'vendedor_nombre': c.creado_por.nombre_completo if c.creado_por else 'Sin asignar'  # ✅ NUEVO
     } for c in contactos]
     return {'status': 'success', 'contactos': data}
 

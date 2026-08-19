@@ -4873,6 +4873,16 @@ window.abrirModalNuevoContacto = function(contactoId = null) {
     const ruc = $('#cli_doc_select').val();
     if (!ruc) return Swal.fire('Falta Cliente', 'Seleccione o guarde el cliente principal primero.', 'warning');
     
+    // ✅ NUEVO: si el admin está viendo los contactos de OTRO vendedor (vía Directorio), bloquea crear/editar
+    if (vendedorContextoDirectorio && String(vendedorContextoDirectorio) !== '{{ session.get("user_id") }}') {
+        return Swal.fire({
+            icon: 'info',
+            title: 'Viendo contactos de otro vendedor',
+            text: 'Estás viendo los contactos guardados por otro vendedor para este cliente. Para agregar tus propios contactos, busca el RUC directamente (sin usar el Directorio).',
+            confirmButtonText: 'Entendido'
+        });
+    }
+    
     document.getElementById('contactoEditandoId').value = '';
     document.getElementById('contactoNuevoNombre').value = '';
     document.getElementById('contactoNuevoArea').value = '';
@@ -4917,7 +4927,8 @@ function guardarNuevoContacto() {
                 bootstrap.Modal.getInstance(document.getElementById('modalNuevoContacto')).hide();
                 Swal.fire({ icon: 'success', title: data.msg, toast: true, position: 'top-end', showConfirmButton: false, timer: 2000 });
                 
-                cargarContactosAdicionales(ruc);
+                // ✅ FIX: pasa el mismo contexto que se estaba usando
+                cargarContactosAdicionales(ruc, vendedorContextoDirectorio);
                 setTimeout(() => {
                     $('#selectContactoGuardado').val(data.contacto_id).trigger('change');
                 }, 300);
@@ -4955,7 +4966,9 @@ function cargarContactosAdicionales(ruc, vendedorId = null) {
             contactosGuardadosCache.forEach(c => {
                 const opt = document.createElement('option');
                 opt.value = c.id;
-                opt.text = `${c.nombre}${c.area ? ' · ' + c.area : ''}`;
+                // ✅ NUEVO: muestra el vendedor dueño solo si estamos viendo el contexto de otro (admin en Directorio)
+                let etiquetaVendedor = vendedorId ? ` (${c.vendedor_nombre})` : '';
+                opt.text = `${c.nombre}${c.area ? ' · ' + c.area : ''}${etiquetaVendedor}`;
                 select.appendChild(opt);
             });
             
@@ -4974,10 +4987,15 @@ function renderizarListaContactosEditable() {
     
     let html = '<div class="list-group list-group-flush border rounded bg-white shadow-sm mt-1">';
     contactosGuardadosCache.forEach(c => {
+        // ✅ NUEVO: solo se muestra si hay contexto de otro vendedor (evita ruido innecesario)
+        let etiquetaVendedor = vendedorContextoDirectorio 
+            ? `<span class="badge bg-light text-primary border ms-1" style="font-size: 0.6rem;"><i class="bi bi-person-badge"></i> ${c.vendedor_nombre}</span>` 
+            : '';
+        
         html += `
             <div class="list-group-item py-1 px-2 d-flex justify-content-between align-items-center small">
                 <div>
-                    <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''}<br>
+                    <strong>${c.nombre}</strong> ${c.area ? '· ' + c.area : ''} ${etiquetaVendedor}<br>
                     <span class="text-muted">${c.telefono || ''} ${c.correo ? '· ' + c.correo : ''}</span>
                 </div>
                 <div>
