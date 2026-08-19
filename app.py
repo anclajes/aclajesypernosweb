@@ -4745,7 +4745,9 @@ def picking_almacen():
     query_hist = query_hist.order_by(Order.fecha.desc())
     pagination_hist = query_hist.paginate(page=page_hist, per_page=20, error_out=False)
 
-    ordenes_devueltas = Order.query.filter(Order.estado.in_(['Devuelto', 'Anulado'])).order_by(Order.fecha.desc()).all()
+    ordenes_devueltas = Order.query.filter(
+    Order.estado.in_(['Devuelto', 'Despacho Cancelado'])  # ✅ ya no incluye 'Anulado'
+    ).order_by(Order.fecha.desc()).all()
     
     return render_template('picking_almacen.html', 
                            ordenes_verificar=ordenes_por_verificar,

@@ -57,7 +57,7 @@
     <li class="nav-item flex-fill text-center" role="presentation">
         <button class="nav-link fw-bold px-4 w-100" id="pills-devueltos-tab" 
                 data-bs-toggle="pill" data-bs-target="#pills-devueltos" type="button" role="tab">
-            <i class="bi bi-arrow-return-left"></i> 4. Devueltos / Anulados
+            <i class="bi bi-arrow-return-left"></i> 4. Devueltos / Despachos Cancelados
             {% if ordenes_devueltas|length > 0 %}
                 <span class="badge bg-dark ms-2">{{ ordenes_devueltas|length }}</span>
             {% endif %}
@@ -622,7 +622,7 @@
         <div class="card shadow-sm border-0 mb-3">
             <div class="card-header bg-dark text-white py-2">
                 <h6 class="mb-0 fw-bold small text-uppercase">
-                    <i class="bi bi-arrow-return-left"></i> Registro de Devoluciones y Anulaciones
+                    <i class="bi bi-arrow-return-left"></i> Registro de Devoluciones y Despachos Cancelados
                 </h6>
             </div>
             <div class="card-body p-0 table-responsive" style="min-height: 250px;">
@@ -666,11 +666,10 @@
                             </td>
                             <td>
                                 <!-- AQUÍ MOSTRAMOS EL MOTIVO -->
-                                {% set texto_motivo = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo %}
-                                
                                 {% if o.categoria_cancelacion %}
-                                    <span class="badge bg-secondary mb-1">{{ o.categoria_cancelacion }}</span>
+                                    <span class="badge bg-secondary mb-1" style="font-size: 0.65rem;">{{ o.categoria_cancelacion }}</span><br>
                                 {% endif %}
+                                {% set texto_motivo = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo %}
                                 
                                 {% if texto_motivo %}
                                     <div class="text-danger fw-bold mt-1 text-wrap" style="max-width: 250px; font-size: 0.8rem;">
@@ -682,9 +681,9 @@
                             </td>
                             <td class="text-center">
                                 {% if o.estado == 'Devuelto' %}
-                                    <span class="badge bg-dark shadow-sm"><i class="bi bi-arrow-return-left"></i> Devuelto (Stock IN)</span>
-                                {% else %}
-                                    <span class="badge bg-danger shadow-sm"><i class="bi bi-x-circle"></i> Cancelado</span>
+                                    <span class="badge bg-dark shadow-sm border border-light"><i class="bi bi-arrow-return-left"></i> ↩️ Devuelto (Almacén)</span>
+                                {% elif o.estado == 'Despacho Cancelado' %}
+                                    <span class="badge bg-danger shadow-sm border border-danger"><i class="bi bi-slash-circle"></i> 🚫 Despacho Cancelado</span>
                                 {% endif %}
                             </td>
                             <td class="text-center">
@@ -1008,44 +1007,94 @@ function procesarSalida(orderId) {
 function procesarDevolucion(orderId) {
     Swal.fire({
         title: 'Registrar Devolución',
+        width: '650px',
         html: `
             <div class="text-start small">
                 <p>La venta cambiará a "Devuelto" y el stock reingresará al sistema.</p>
                 
                 <label class="form-label fw-bold mt-2">Motivo de la Devolución:</label>
-                <select id="motivo_devolucion" class="form-select mb-2" onchange="toggleDetalle('motivo_devolucion', 'detalle_devolucion')">
+                <select id="motivo_devolucion_select" class="form-select mb-2">
                     <option value="" disabled selected>Seleccione un motivo...</option>
-                    <option value="Producto dañado o defectuoso">Producto dañado o defectuoso</option>
-                    <option value="Producto equivocado (Error de almacén)">Producto equivocado (Error almacén)</option>
-                    <option value="Cliente insatisfecho con la calidad">Cliente insatisfecho con la calidad</option>
-                    <option value="Pedido duplicado">Pedido duplicado</option>
-                    <option value="Otro">Otro (Especificar)</option>
+
+                    <optgroup label="📦 ERRORES DE ALMACÉN Y LOGÍSTICA">
+                        <option value="Error de picking">Error de picking: Producto equivocado o medida incorrecta</option>
+                        <option value="Mal empaque">Mal empaque: Embalaje deficiente causó rechazo o daño</option>
+                        <option value="Falso flete">Falso flete: Cliente no estaba o rechazó en puerta</option>
+                    </optgroup>
+
+                    <optgroup label="⚙️ CALIDAD Y ESPECIFICACIONES (PRODUCTO)">
+                        <option value="Producto dañado o defectuoso">Producto dañado o defectuoso (falla de fábrica)</option>
+                        <option value="No es el material">No es el material: no cumple la especificación técnica</option>
+                        <option value="Insatisfacción con la calidad">Insatisfacción con la calidad (acabado o marca)</option>
+                    </optgroup>
+
+                    <optgroup label="🏢 ERRORES ADMINISTRATIVOS Y COMERCIALES">
+                        <option value="Pedido duplicado">Pedido duplicado: se despachó dos veces por error</option>
+                    </optgroup>
+
+                    <optgroup label="OTROS">
+                        <option value="OTRO">Otro motivo (Especificar)...</option>
+                    </optgroup>
                 </select>
-                <textarea id="detalle_devolucion" class="form-control d-none" placeholder="Escriba el detalle de la devolución aquí..." rows="2"></textarea>
+
+                <div id="detalle_devolucion_container" class="d-none">
+                    <label class="form-label fw-bold small mb-1 text-danger">Especifique el motivo:</label>
+                    <textarea id="detalle_devolucion" class="form-control border-danger" placeholder="Escriba el detalle de la devolución aquí..." rows="3"></textarea>
+                </div>
+
+                <div id="detalle_extra_container" class="mt-2">
+                    <label class="form-label small text-muted mb-1">Detalle adicional (opcional):</label>
+                    <textarea id="detalle_extra" class="form-control" placeholder="Información adicional, si aplica..." rows="2"></textarea>
+                </div>
             </div>`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, Reingresar Stock',
         confirmButtonColor: '#ffc107',
         cancelButtonText: 'Cancelar',
+
+        didOpen: () => {
+            const selectEl = document.getElementById('motivo_devolucion_select');
+            const otroContainer = document.getElementById('detalle_devolucion_container');
+            const textareaEl = document.getElementById('detalle_devolucion');
+
+            selectEl.addEventListener('change', (e) => {
+                if (e.target.value === 'OTRO') {
+                    otroContainer.classList.remove('d-none');
+                    textareaEl.focus();
+                } else {
+                    otroContainer.classList.add('d-none');
+                    textareaEl.value = '';
+                }
+            });
+        },
+
         preConfirm: () => {
-            const motivo = document.getElementById('motivo_devolucion').value;
-            const detalle = document.getElementById('detalle_devolucion').value;
-            if (!motivo) {
+            const selectEl = document.getElementById('motivo_devolucion_select');
+            const selectValue = selectEl.value;
+            const textareaValue = document.getElementById('detalle_devolucion').value.trim();
+            const extra = document.getElementById('detalle_extra').value.trim();
+
+            if (!selectValue) {
                 Swal.showValidationMessage('Debe seleccionar un motivo principal.');
                 return false;
             }
-            if (motivo === 'Otro' && !detalle.trim()) {
-                Swal.showValidationMessage('Debe especificar el detalle en la caja de texto.');
+            if (selectValue === 'OTRO' && !textareaValue) {
+                Swal.showValidationMessage('Debe especificar el motivo en el recuadro rojo.');
                 return false;
             }
-            return { motivo: motivo, detalle: detalle };
+
+            const optionSeleccionada = selectEl.options[selectEl.selectedIndex];
+            const categoria = optionSeleccionada.parentElement.label || 'Sin categoría';
+            let motivoFinal = selectValue === 'OTRO' ? textareaValue : optionSeleccionada.text;
+            if (extra) motivoFinal += ` | Detalle: ${extra}`;
+
+            return { motivo: motivoFinal, categoria: categoria };
         }
     }).then((result) => {
         if (result.isConfirmed) {
             Swal.fire({ title: 'Procesando devolución...', didOpen: () => { Swal.showLoading() } });
             
-            // ATENCIÓN: Enviamos los datos por POST en formato JSON
             fetch(`/api/procesar_devolucion/${orderId}`, { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
