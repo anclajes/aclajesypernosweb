@@ -849,29 +849,12 @@
                     </button>
                 </div>
 
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body p-0">
-                        <div class="table-responsive" style="max-height: 60vh;">
-                            <table class="table table-sm table-hover table-striped align-middle text-nowrap mb-0" id="tablaClientes">
-                                <thead class="table-light text-muted small text-uppercase sticky-top">
-                                    <tr>
-                                        <th style="min-width: 120px;" class="ps-3">RUC/DNI</th>
-                                        <th style="min-width: 250px;">Razón Social</th> 
-                                        <th style="min-width: 100px;" class="d-none d-md-table-cell text-center">Estado</th>
-                                        <th style="min-width: 150px;" class="d-none d-lg-table-cell">Última Act.</th>
-                                        <th style="min-width: 100px;" class="text-center pe-3">Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="bodyDirectorio">
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted py-5">
-                                            <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div><br>
-                                            Cargando clientes...
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                <div id="contadorResultadosDirectorio" class="small text-muted mb-2 fw-bold"></div>
+
+                <div id="listaClientesDirectorio" class="d-flex flex-column gap-2" style="max-height: 60vh; overflow-y: auto;">
+                    <div class="text-center text-muted py-5">
+                        <div class="spinner-border spinner-border-sm text-primary mb-2"></div><br>
+                        Cargando clientes...
                     </div>
                 </div>
             </div>
@@ -4529,112 +4512,112 @@ function cargarClientesDirectorio() {
     const filtroVal = filtroSel ? filtroSel.value : '';
     const url = filtroVal ? `/api/listar_todos_clientes?filtro_vendedor=${filtroVal}` : '/api/listar_todos_clientes';
     
+    const cont = document.getElementById('listaClientesDirectorio');
+    cont.innerHTML = '<div class="text-center text-muted py-5"><div class="spinner-border spinner-border-sm text-primary mb-2"></div><br>Cargando clientes...</div>';
+    
     fetch(url)
         .then(r => r.json())
         .then(res => {
-            const tbody = document.getElementById('bodyDirectorio');
-            tbody.innerHTML = '';
+            cont.innerHTML = '';
+            document.getElementById('contadorResultadosDirectorio').innerText = `${res.data.length} registro(s) encontrado(s)`;
             
             if(res.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No hay clientes guardados aún.</td></tr>';
+                cont.innerHTML = '<div class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 opacity-25"></i><p class="mt-2">No hay clientes guardados aún.</p></div>';
                 return;
             }
 
             res.data.forEach(c => {
                 const nombreSafe = (c.nombre || '').replace(/'/g, "&#39;");
-                const fechaAudit = c.updated_at || '-';
-                const userAudit = c.updated_by || 'Sistema';
-                const badgeEst = c.estado === 'ACTIVO' ? '<span class="badge bg-success text-white" style="font-size:0.6rem">ACTIVO</span>' : '<span class="badge bg-danger" style="font-size:0.6rem">' + c.estado + '</span>';
+                const badgeEst = c.estado === 'ACTIVO' 
+                    ? '<span class="badge bg-success-subtle text-success border border-success-subtle">● Activo</span>' 
+                    : `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">● ${c.estado}</span>`;
 
-                let extraInfo = '';
-                if (c.rubro || c.cant_contactos > 0) {
-                    extraInfo = `<div class="text-muted mt-1" style="font-size: 0.7rem;">
-                        ${c.rubro ? '<i class="bi bi-briefcase"></i> ' + c.rubro + ' &nbsp;' : ''}
-                        ${c.cant_contactos > 0 ? '<i class="bi bi-person-lines-fill"></i> ' + c.cant_contactos + ' contacto(s)' : '<span class="fst-italic">Sin contactos aún</span>'}
-                    </div>`;
-                } else {
-                    extraInfo = `<div class="text-muted mt-1 fst-italic" style="font-size: 0.7rem;">Sin rubro ni contactos aún</div>`;
+                const esAdmin = {{ 'true' if session.get('role') in ['admin', 'administracion'] else 'false' }};
+                
+                // Iniciales del vendedor para el avatar circular
+                const inicialesVendedor = (c.vendedor_dueno || '?').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+
+                let badgeRubro = c.rubro 
+                    ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle"><i class="bi bi-briefcase"></i> ${c.rubro}</span>` 
+                    : `<span class="badge bg-light text-muted border">Sin rubro</span>`;
+                
+                let badgeContactos = c.cant_contactos > 0
+                    ? `<span class="badge bg-info-subtle text-info border border-info-subtle"><i class="bi bi-person-lines-fill"></i> ${c.cant_contactos} contacto${c.cant_contactos > 1 ? 's' : ''}</span>`
+                    : `<span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-exclamation-circle"></i> Sin contactos</span>`;
+
+                let bloqueVendedor = '';
+                if (esAdmin) {
+                    bloqueVendedor = `
+                        <div class="d-flex align-items-center gap-2 border-start ps-2 ms-1" style="border-color: #dee2e6 !important;">
+                            <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center fw-bold flex-shrink-0" 
+                                 style="width: 32px; height: 32px; font-size: 0.7rem;">
+                                ${inicialesVendedor}
+                            </div>
+                            <div>
+                                <div class="fw-bold text-primary small">${c.vendedor_dueno}</div>
+                                <div class="text-muted" style="font-size: 0.65rem;">Vendedor asignado</div>
+                            </div>
+                        </div>`;
                 }
 
-                let vendedorInfo = '';
-                {% if session.get('role') in ['admin', 'administracion'] %}
-                vendedorInfo = `<div class="text-primary mt-1" style="font-size: 0.7rem;"><i class="bi bi-person-badge"></i> ${c.vendedor_dueno}</div>`;
-                {% endif %}
-                
-                const fila = `
-                    <tr>
-                        <td class="fw-bold text-primary small">${c.documento}</td>
-                        <td class="small text-truncate" style="max-width: 250px;">
-                            ${c.nombre}
-                            ${extraInfo}
-                            ${vendedorInfo}
-                        </td>
-                        <td class="d-none d-md-table-cell">${badgeEst}</td>
-                        <td class="small text-muted" style="font-size: 0.75rem;">
-                            ${fechaAudit}<br><span class="fst-italic">Por: ${userAudit}</span>
-                        </td>
-                        <td class="text-end">
-                            <div class="d-flex gap-1 justify-content-end">
-                                <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${c.vendedor_dueno_id}')">
-                                    <i class="bi bi-check2-square"></i> Usar
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary py-0" 
-                                    onclick="verHistorialContactos('${c.documento}')" title="Ver historial de cambios">
-                                    <i class="bi bi-clock-history"></i>
-                                </button>
+                const tarjeta = `
+                    <div class="card border-0 shadow-sm cliente-card" data-nombre="${nombreSafe.toLowerCase()}" data-ruc="${c.documento}">
+                        <div class="card-body p-2 p-md-3">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                                
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <span class="fw-bold text-primary" style="font-size: 0.9rem;">${c.documento}</span>
+                                        ${badgeEst}
+                                    </div>
+                                    <div class="fw-bold text-dark mt-1" style="font-size: 0.95rem;">${c.nombre}</div>
+                                    <div class="d-flex flex-wrap gap-1 mt-2">
+                                        ${badgeRubro}
+                                        ${badgeContactos}
+                                    </div>
+                                    <div class="text-muted mt-2" style="font-size: 0.7rem;">
+                                        <i class="bi bi-clock-history"></i> ${c.updated_at} · Por: ${c.updated_by}
+                                    </div>
+                                </div>
+
+                                ${bloqueVendedor}
+
+                                <div class="d-flex flex-row flex-md-column gap-1 justify-content-end">
+                                    <button class="btn btn-sm btn-primary fw-bold shadow-sm" 
+                                        onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${c.vendedor_dueno_id}')" title="Usar este cliente">
+                                        <i class="bi bi-check2-square"></i> Usar
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary shadow-sm" 
+                                        onclick="verHistorialContactos('${c.documento}')" title="Ver historial de cambios">
+                                        <i class="bi bi-clock-history"></i>
+                                    </button>
+                                </div>
                             </div>
-                        </td>
-                    </tr>
+                        </div>
+                    </div>
                 `;
-                tbody.insertAdjacentHTML('beforeend', fila);
+                cont.insertAdjacentHTML('beforeend', tarjeta);
             });
         })
         .catch(err => console.error(err));
 }
 
 
-    function filtrarTablaClientes() {
-
-        const filtro = document.getElementById('filtroDirectorio').value.toUpperCase();
-
-        const tabla = document.getElementById('tablaClientes');
-
-        const tr = tabla.getElementsByTagName('tr');
-
-
-
-        for (let i = 1; i < tr.length; i++) { // Empezamos en 1 para saltar el header
-
-            let tdRuc = tr[i].getElementsByTagName("td")[0];
-
-            let tdNom = tr[i].getElementsByTagName("td")[1];
-
-            
-
-            if (tdRuc || tdNom) {
-
-                let txtRuc = tdRuc.textContent || tdRuc.innerText;
-
-                let txtNom = tdNom.textContent || tdNom.innerText;
-
-                
-
-                if (txtRuc.toUpperCase().indexOf(filtro) > -1 || txtNom.toUpperCase().indexOf(filtro) > -1) {
-
-                    tr[i].style.display = "";
-
-                } else {
-
-                    tr[i].style.display = "none";
-
-                }
-
-            }       
-
-        }
-
-    }
+function filtrarTablaClientes() {
+    const filtro = document.getElementById('filtroDirectorio').value.toLowerCase();
+    const tarjetas = document.querySelectorAll('.cliente-card');
+    let visibles = 0;
+    
+    tarjetas.forEach(card => {
+        const nombre = card.getAttribute('data-nombre') || '';
+        const ruc = card.getAttribute('data-ruc') || '';
+        const coincide = nombre.includes(filtro) || ruc.includes(filtro);
+        card.style.display = coincide ? '' : 'none';
+        if (coincide) visibles++;
+    });
+    
+    document.getElementById('contadorResultadosDirectorio').innerText = `${visibles} registro(s) encontrado(s)`;
+}
 
 function toggleInmediata() {
     const chk = document.getElementById('chkInmediata');

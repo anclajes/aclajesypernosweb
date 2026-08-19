@@ -1027,82 +1027,118 @@ def exportar_directorio_clientes():
     
     rol = session.get('role')
     user_id = session.get('user_id')
+    filtro_vendedor = request.args.get('filtro_vendedor')
     
-    query = Client.query
+    filas_directorio = []  # lista de (client_obj, vendedor_id, vendedor_nombre)
     
     if rol == 'vendedor':
-        query = query.filter(Client.creado_por_id == user_id)
+        ids_relacionados = get_client_ids_para_vendedor(user_id)
+        if ids_relacionados:
+            clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+            nombre_yo = User.query.get(user_id).nombre_completo
+            for c in clientes:
+                filas_directorio.append((c, user_id, nombre_yo))
+    
     else:
-        filtro_vendedor = request.args.get('filtro_vendedor')
         if filtro_vendedor == 'mios':
-            query = query.filter(Client.creado_por_id == user_id)
+            ids_relacionados = get_client_ids_para_vendedor(user_id)
+            if ids_relacionados:
+                clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+                nombre_yo = User.query.get(user_id).nombre_completo
+                for c in clientes:
+                    filas_directorio.append((c, user_id, nombre_yo))
+        
         elif filtro_vendedor and filtro_vendedor != 'todos':
-            query = query.filter(Client.creado_por_id == filtro_vendedor)
+            v_id = int(filtro_vendedor)
+            ids_relacionados = get_client_ids_para_vendedor(v_id)
+            if ids_relacionados:
+                clientes = Client.query.filter(Client.id.in_(ids_relacionados)).all()
+                vendedor_obj = User.query.get(v_id)
+                nombre_v = vendedor_obj.nombre_completo if vendedor_obj else 'Sin asignar'
+                for c in clientes:
+                    filas_directorio.append((c, v_id, nombre_v))
+        
+        else:
+            # "Todos": mismo criterio que el Directorio en pantalla — una fila por (cliente, vendedor)
+            relacion_por_cliente = {}
+            for c in Client.query.filter(Client.creado_por_id.isnot(None)).all():
+                relacion_por_cliente.setdefault(c.id, set()).add(c.creado_por_id)
+            for ct in ClientContact.query.filter(ClientContact.creado_por_id.isnot(None)).all():
+                relacion_por_cliente.setdefault(ct.client_id, set()).add(ct.creado_por_id)
+            for r in ClientRubroVendedor.query.all():
+                relacion_por_cliente.setdefault(r.client_id, set()).add(r.vendedor_id)
+            
+            ids_clientes = list(relacion_por_cliente.keys())
+            ids_vendedores = list({v for vs in relacion_por_cliente.values() for v in vs})
+            mapa_clientes = {c.id: c for c in Client.query.filter(Client.id.in_(ids_clientes)).all()} if ids_clientes else {}
+            mapa_usuarios = {u.id: u for u in User.query.filter(User.id.in_(ids_vendedores)).all()} if ids_vendedores else {}
+            
+            for client_id, vendedores in relacion_por_cliente.items():
+                c = mapa_clientes.get(client_id)
+                if not c: continue
+                for v_id in vendedores:
+                    vendedor_obj = mapa_usuarios.get(v_id)
+                    nombre_v = vendedor_obj.nombre_completo if vendedor_obj else 'Sin asignar'
+                    filas_directorio.append((c, v_id, nombre_v))
     
-    clientes = query.order_by(Client.nombre).all()
-    
-    if not clientes:
+    if not filas_directorio:
         flash('No hay clientes para exportar con este filtro.')
         return redirect(url_for('nueva_venta'))
     
-    data = []
-    for c in clientes:
-        # Contar ventas entregadas y sumar montos por moneda
-        ordenes_entregadas = Order.query.filter_by(cliente_id=c.id, estado='Entregado').all()
+    # --- HOJA 1: BILLETERA (una fila por cliente-vendedor) ---
+    data_billetera = []
+    for c, v_id, v_nombre in filas_directorio:
+        cant_contactos = ClientContact.query.filter_by(client_id=c.id, creado_por_id=v_id).count()
+        rubro_reg = ClientRubroVendedor.query.filter_by(client_id=c.id, vendedor_id=v_id).first()
+        
+        ordenes_entregadas = Order.query.filter_by(cliente_id=c.id, estado='Entregado', vendedor_id=v_id).all()
         total_pen = sum(o.total for o in ordenes_entregadas if o.moneda == 'PEN')
         total_usd = sum(o.total for o in ordenes_entregadas if o.moneda == 'USD')
         
-        data.append({
+        data_billetera.append({
             'RUC/DNI': c.documento,
             'Razón Social': c.nombre,
-            'Vendedor Asignado': c.creado_por.nombre_completo if c.creado_por else 'Sin asignar',
-            'Rubro': c.rubro or '-',
-            'Área / Contacto': c.area or '-',
-            'Contacto Principal': c.contacto_nombre or '-',
-            'Correo': c.correo or '-',
-            'Teléfono': c.telefono or '-',
-            'Dirección': c.direccion or '-',
+            'Vendedor Asignado': v_nombre,
+            'Rubro (de este vendedor)': rubro_reg.rubro if rubro_reg and rubro_reg.rubro else '-',
+            'N° Contactos (de este vendedor)': cant_contactos,
+            'Dirección Fiscal': c.direccion or '-',
             'Distrito': c.distrito or '-',
             'Provincia': c.provincia or '-',
             'Departamento': c.departamento or '-',
             'Estado SUNAT': c.estado or '-',
             'Condición SUNAT': c.condicion or '-',
-            'N° Ventas Entregadas': len(ordenes_entregadas),
+            'N° Ventas Entregadas (de este vendedor)': len(ordenes_entregadas),
             'Total Vendido (S/)': round(total_pen, 2),
             'Total Vendido ($)': round(total_usd, 2),
-            'Última Actualización': c.last_updated.strftime('%d/%m/%Y %H:%M') if c.last_updated else '-',
-            'Actualizado Por': c.updated_by or '-'
+            'Última Actualización Ficha': c.last_updated.strftime('%d/%m/%Y %H:%M') if c.last_updated else '-'
         })
     
-    # Contactos adicionales de estos mismos clientes
-    ids_clientes = [c.id for c in clientes]
-    contactos_extra = ClientContact.query.filter(ClientContact.client_id.in_(ids_clientes)).all()
-    mapa_cliente = {c.id: c for c in clientes}
+    # --- HOJA 2: CONTACTOS (solo los del vendedor correspondiente en cada fila) ---
+    data_contactos = []
+    for c, v_id, v_nombre in filas_directorio:
+        contactos_v = ClientContact.query.filter_by(client_id=c.id, creado_por_id=v_id).all()
+        for ct in contactos_v:
+            data_contactos.append({
+                'RUC/DNI': c.documento,
+                'Razón Social': c.nombre,
+                'Vendedor Asignado': v_nombre,
+                'Nombre Contacto': ct.nombre,
+                'Área': ct.area or '-',
+                'Teléfono': ct.telefono or '-',
+                'Correo': ct.correo or '-',
+                'Fecha Registro': ct.created_at.strftime('%d/%m/%Y') if ct.created_at else '-'
+            })
     
-    contactos_data = []
-    for ct in contactos_extra:
-        cli = mapa_cliente.get(ct.client_id)
-        if not cli: continue
-        contactos_data.append({
-            'RUC/DNI': cli.documento,
-            'Razón Social': cli.nombre,
-            'Nombre Contacto': ct.nombre,
-            'Área': ct.area or '-',
-            'Teléfono': ct.telefono or '-',
-            'Correo': ct.correo or '-',
-            'Fecha Registro': ct.created_at.strftime('%d/%m/%Y') if ct.created_at else '-'
-        })
-    
-    df_clientes = pd.DataFrame(data)
-    df_contactos = pd.DataFrame(contactos_data)
+    df_billetera = pd.DataFrame(data_billetera)
+    df_contactos = pd.DataFrame(data_contactos)
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_clientes.to_excel(writer, index=False, sheet_name='Billetera Clientes')
-        hojas = [('Billetera Clientes', df_clientes)]
+        df_billetera.to_excel(writer, index=False, sheet_name='Billetera Clientes')
+        hojas = [('Billetera Clientes', df_billetera)]
         if not df_contactos.empty:
-            df_contactos.to_excel(writer, index=False, sheet_name='Contactos Adicionales')
-            hojas.append(('Contactos Adicionales', df_contactos))
+            df_contactos.to_excel(writer, index=False, sheet_name='Contactos por Vendedor')
+            hojas.append(('Contactos por Vendedor', df_contactos))
         
         workbook = writer.book
         formato_header = workbook.add_format({'bold': True, 'bg_color': '#0B3D91', 'font_color': 'white', 'border': 1})
