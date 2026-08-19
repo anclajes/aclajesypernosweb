@@ -665,17 +665,20 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <!-- AQUÍ MOSTRAMOS EL MOTIVO -->
                                 {% if o.categoria_cancelacion %}
                                     <span class="badge bg-secondary mb-1" style="font-size: 0.65rem;">{{ o.categoria_cancelacion }}</span><br>
                                 {% endif %}
                                 {% set texto_motivo = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo %}
                                 
                                 {% if texto_motivo %}
-                                    <div class="text-danger fw-bold mt-1 text-wrap" style="max-width: 250px; font-size: 0.8rem;">
-                                        <i class="bi bi-exclamation-octagon-fill"></i> {{ texto_motivo }}
+                                    <div class="text-danger fw-bold d-flex align-items-center gap-1" style="max-width: 220px; font-size: 0.8rem;">
+                                        <i class="bi bi-exclamation-octagon-fill flex-shrink-0"></i> 
+                                        <span class="text-truncate" style="max-width: 170px;" title="{{ texto_motivo }}">{{ texto_motivo }}</span>
+                                        <button type="button" class="btn btn-sm btn-link p-0 text-danger flex-shrink-0" onclick="verMotivoCompleto('{{ texto_motivo|e }}')" title="Leer motivo completo">
+                                            <i class="bi bi-search"></i>
+                                        </button>
                                     </div>
-                                {% elif not o.categoria_cancelacion %}
+                                {% else %}
                                     <span class="text-muted fst-italic">Sin motivo registrado</span>
                                 {% endif %}
                             </td>
@@ -1009,44 +1012,19 @@ function procesarDevolucion(orderId) {
         title: 'Registrar Devolución',
         width: '650px',
         html: `
-            <div class="text-start small">
-                <p>La venta cambiará a "Devuelto" y el stock reingresará al sistema.</p>
-                
-                <label class="form-label fw-bold mt-2">Motivo de la Devolución:</label>
-                <select id="motivo_devolucion_select" class="form-select mb-2">
-                    <option value="" disabled selected>Seleccione un motivo...</option>
+            <p class="text-start small text-muted mb-2">La venta cambiará a "Devuelto" y el stock reingresará al sistema.</p>
+            ${construirHtmlMotivos('motivo_devolucion_radio')}
+            
+            <div id="detalle_devolucion_container" class="d-none text-start mt-3">
+                <label class="form-label fw-bold small mb-1 text-danger">Especifique el motivo:</label>
+                <textarea id="detalle_devolucion" class="form-control border-danger" placeholder="Escriba el detalle de la devolución aquí..." rows="3"></textarea>
+            </div>
 
-                    <optgroup label="📦 ERRORES DE ALMACÉN Y LOGÍSTICA">
-                        <option value="Error de picking">Error de picking: Producto equivocado o medida incorrecta</option>
-                        <option value="Mal empaque">Mal empaque: Embalaje deficiente causó rechazo o daño</option>
-                        <option value="Falso flete">Falso flete: Cliente no estaba o rechazó en puerta</option>
-                    </optgroup>
-
-                    <optgroup label="⚙️ CALIDAD Y ESPECIFICACIONES (PRODUCTO)">
-                        <option value="Producto dañado o defectuoso">Producto dañado o defectuoso (falla de fábrica)</option>
-                        <option value="No es el material">No es el material: no cumple la especificación técnica</option>
-                        <option value="Insatisfacción con la calidad">Insatisfacción con la calidad (acabado o marca)</option>
-                    </optgroup>
-
-                    <optgroup label="🏢 ERRORES ADMINISTRATIVOS Y COMERCIALES">
-                        <option value="Pedido duplicado">Pedido duplicado: se despachó dos veces por error</option>
-                    </optgroup>
-
-                    <optgroup label="OTROS">
-                        <option value="OTRO">Otro motivo (Especificar)...</option>
-                    </optgroup>
-                </select>
-
-                <div id="detalle_devolucion_container" class="d-none">
-                    <label class="form-label fw-bold small mb-1 text-danger">Especifique el motivo:</label>
-                    <textarea id="detalle_devolucion" class="form-control border-danger" placeholder="Escriba el detalle de la devolución aquí..." rows="3"></textarea>
-                </div>
-
-                <div id="detalle_extra_container" class="mt-2">
-                    <label class="form-label small text-muted mb-1">Detalle adicional (opcional):</label>
-                    <textarea id="detalle_extra" class="form-control" placeholder="Información adicional, si aplica..." rows="2"></textarea>
-                </div>
-            </div>`,
+            <div class="text-start mt-3">
+                <label class="form-label small text-muted mb-1">Detalle adicional (opcional):</label>
+                <textarea id="detalle_extra" class="form-control" placeholder="Información adicional, si aplica..." rows="2"></textarea>
+            </div>
+        `,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, Reingresar Stock',
@@ -1054,39 +1032,41 @@ function procesarDevolucion(orderId) {
         cancelButtonText: 'Cancelar',
 
         didOpen: () => {
-            const selectEl = document.getElementById('motivo_devolucion_select');
-            const otroContainer = document.getElementById('detalle_devolucion_container');
-            const textareaEl = document.getElementById('detalle_devolucion');
-
-            selectEl.addEventListener('change', (e) => {
-                if (e.target.value === 'OTRO') {
-                    otroContainer.classList.remove('d-none');
-                    textareaEl.focus();
-                } else {
-                    otroContainer.classList.add('d-none');
-                    textareaEl.value = '';
-                }
+            document.querySelectorAll('input[name="motivo_devolucion_radio"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const otroContainer = document.getElementById('detalle_devolucion_container');
+                    const textareaEl = document.getElementById('detalle_devolucion');
+                    if (e.target.value === 'OTRO') {
+                        otroContainer.classList.remove('d-none');
+                        textareaEl.focus();
+                    } else {
+                        otroContainer.classList.add('d-none');
+                        textareaEl.value = '';
+                    }
+                    // Resaltar visualmente la opción elegida
+                    document.querySelectorAll('.motivo-opcion').forEach(l => l.style.borderColor = '#dee2e6');
+                    e.target.closest('.motivo-opcion').style.borderColor = '#0d6efd';
+                });
             });
         },
 
         preConfirm: () => {
-            const selectEl = document.getElementById('motivo_devolucion_select');
-            const selectValue = selectEl.value;
-            const textareaValue = document.getElementById('detalle_devolucion').value.trim();
-            const extra = document.getElementById('detalle_extra').value.trim();
-
-            if (!selectValue) {
+            const radioSeleccionado = document.querySelector('input[name="motivo_devolucion_radio"]:checked');
+            if (!radioSeleccionado) {
                 Swal.showValidationMessage('Debe seleccionar un motivo principal.');
                 return false;
             }
-            if (selectValue === 'OTRO' && !textareaValue) {
+
+            const textareaValue = document.getElementById('detalle_devolucion').value.trim();
+            if (radioSeleccionado.value === 'OTRO' && !textareaValue) {
                 Swal.showValidationMessage('Debe especificar el motivo en el recuadro rojo.');
                 return false;
             }
 
-            const optionSeleccionada = selectEl.options[selectEl.selectedIndex];
-            const categoria = optionSeleccionada.parentElement.label || 'Sin categoría';
-            let motivoFinal = selectValue === 'OTRO' ? textareaValue : optionSeleccionada.text;
+            const categoria = radioSeleccionado.dataset.categoria;
+            const label = radioSeleccionado.dataset.label;
+            let motivoFinal = radioSeleccionado.value === 'OTRO' ? textareaValue : label;
+            const extra = document.getElementById('detalle_extra').value.trim();
             if (extra) motivoFinal += ` | Detalle: ${extra}`;
 
             return { motivo: motivoFinal, categoria: categoria };
@@ -1122,45 +1102,71 @@ function verItemsDevueltos(id) {
 function cancelarDespacho(orderId, codigoVisual) {
     Swal.fire({
         title: 'Cancelar Despacho',
+        width: '650px',
         html: `
-            <div class="text-start small">
-                <p>¿Cancelar el despacho de la <strong>${codigoVisual}</strong>? La orden irá a Incidencias y no se descontará stock.</p>
-                
-                <label class="form-label fw-bold mt-2">Motivo de Cancelación:</label>
-                <select id="motivo_cancelacion" class="form-select mb-2" onchange="toggleDetalle('motivo_cancelacion', 'detalle_cancelacion')">
-                    <option value="" disabled selected>Seleccione un motivo...</option>
-                    <option value="Cliente canceló a última hora">Cliente canceló a última hora</option>
-                    <option value="Quiebre de stock físico (Faltante)">Quiebre de stock físico (Faltante)</option>
-                    <option value="Dirección o contacto erróneo">Dirección o contacto erróneo</option>
-                    <option value="Problema con la agencia de transporte">Problema con la agencia de transporte</option>
-                    <option value="Otro">Otro (Especificar)</option>
-                </select>
-                <textarea id="detalle_cancelacion" class="form-control d-none" placeholder="Escriba el detalle de la cancelación aquí..." rows="2"></textarea>
-            </div>`,
+            <p class="text-start small text-muted mb-2">¿Cancelar el despacho de la <strong>${codigoVisual}</strong>? La orden irá a Devueltos / Cancelados y no se descontará stock.</p>
+            ${construirHtmlMotivosCancelacion('motivo_cancelacion_radio')}
+            
+            <div id="detalle_cancelacion_container" class="d-none text-start mt-3">
+                <label class="form-label fw-bold small mb-1 text-danger">Especifique el motivo:</label>
+                <textarea id="detalle_cancelacion" class="form-control border-danger" placeholder="Escriba el detalle de la cancelación aquí..." rows="3"></textarea>
+            </div>
+
+            <div class="text-start mt-3">
+                <label class="form-label small text-muted mb-1">Detalle adicional (opcional):</label>
+                <textarea id="detalle_cancelacion_extra" class="form-control" placeholder="Información adicional, si aplica..." rows="2"></textarea>
+            </div>
+        `,
         icon: 'error',
         showCancelButton: true,
         confirmButtonColor: '#d33',
         cancelButtonColor: '#6c757d',
         confirmButtonText: 'Sí, cancelar despacho',
         cancelButtonText: 'No, mantener',
+
+        didOpen: () => {
+            document.querySelectorAll('input[name="motivo_cancelacion_radio"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const otroContainer = document.getElementById('detalle_cancelacion_container');
+                    const textareaEl = document.getElementById('detalle_cancelacion');
+                    if (e.target.value === 'OTRO') {
+                        otroContainer.classList.remove('d-none');
+                        textareaEl.focus();
+                    } else {
+                        otroContainer.classList.add('d-none');
+                        textareaEl.value = '';
+                    }
+                    document.querySelectorAll('.motivo-opcion').forEach(l => l.style.borderColor = '#dee2e6');
+                    e.target.closest('.motivo-opcion').style.borderColor = '#dc3545';
+                });
+            });
+        },
+
         preConfirm: () => {
-            const motivo = document.getElementById('motivo_cancelacion').value;
-            const detalle = document.getElementById('detalle_cancelacion').value;
-            if (!motivo) {
+            const radioSeleccionado = document.querySelector('input[name="motivo_cancelacion_radio"]:checked');
+            if (!radioSeleccionado) {
                 Swal.showValidationMessage('Debe seleccionar un motivo principal.');
                 return false;
             }
-            if (motivo === 'Otro' && !detalle.trim()) {
-                Swal.showValidationMessage('Debe especificar el detalle en la caja de texto.');
+
+            const textareaValue = document.getElementById('detalle_cancelacion').value.trim();
+            if (radioSeleccionado.value === 'OTRO' && !textareaValue) {
+                Swal.showValidationMessage('Debe especificar el motivo en el recuadro rojo.');
                 return false;
             }
-            return { motivo: motivo, detalle: detalle };
+
+            const categoria = radioSeleccionado.dataset.categoria;
+            const label = radioSeleccionado.dataset.label;
+            let motivoFinal = radioSeleccionado.value === 'OTRO' ? textareaValue : label;
+            const extra = document.getElementById('detalle_cancelacion_extra').value.trim();
+            if (extra) motivoFinal += ` | Detalle: ${extra}`;
+
+            return { motivo: motivoFinal, categoria: categoria };
         }
     }).then((result) => {
         if (result.isConfirmed) {
             Swal.fire({ title: 'Cancelando...', didOpen: () => { Swal.showLoading() } });
             
-            // ATENCIÓN: Enviamos los datos por POST en formato JSON
             fetch(`/api/cancelar_despacho/${orderId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1176,6 +1182,44 @@ function cancelarDespacho(orderId, codigoVisual) {
             }).catch(() => Swal.fire('Error', 'Fallo de conexión.', 'error'));
         }
     });
+}
+
+// --- Función de motivos específica para Cancelar Despacho ---
+function construirHtmlMotivosCancelacion(nombreCampo) {
+    const categorias = [
+        { titulo: '👤 Motivos del Cliente', color: '#0d6efd', opciones: [
+            { val: 'Cliente canceló a última hora', label: 'Cliente canceló', desc: 'Canceló el pedido a última hora' },
+            { val: 'Dirección o contacto erróneo', label: 'Dirección/contacto erróneo', desc: 'Datos incorrectos o desactualizados' }
+        ]},
+        { titulo: '📦 Errores de Stock y Logística', color: '#fd7e14', opciones: [
+            { val: 'Quiebre de stock físico (Faltante)', label: 'Quiebre de stock', desc: 'Faltante físico detectado antes de salir' },
+            { val: 'Problema con la agencia de transporte', label: 'Problema con agencia', desc: 'Fallo o rechazo de la agencia de transporte' }
+        ]},
+        { titulo: 'Otros', color: '#6c757d', opciones: [
+            { val: 'OTRO', label: 'Otro motivo', desc: 'Especificar manualmente' }
+        ]}
+    ];
+
+    let html = `<div class="text-start" style="max-height: 300px; overflow-y: auto; padding-right: 4px;">`;
+    categorias.forEach(cat => {
+        html += `<div class="fw-bold small text-uppercase mb-2 mt-3" style="color: ${cat.color}; letter-spacing: 0.3px;">${cat.titulo}</div>`;
+        cat.opciones.forEach(op => {
+            html += `
+                <label class="d-flex align-items-start gap-2 p-2 mb-1 rounded border motivo-opcion" 
+                       style="cursor: pointer; transition: all 0.15s;" 
+                       onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                    <input type="radio" name="${nombreCampo}" value="${op.val}" 
+                           data-categoria="${cat.titulo}" data-label="${op.label}"
+                           class="mt-1 flex-shrink-0" style="cursor: pointer;">
+                    <div>
+                        <div class="fw-bold small text-dark">${op.label}</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">${op.desc}</div>
+                    </div>
+                </label>`;
+        });
+    });
+    html += `</div>`;
+    return html;
 }
 
 // Función auxiliar para mostrar/ocultar el textarea cuando eligen "Otro"
@@ -1202,5 +1246,58 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 });
+
+function construirHtmlMotivos(nombreCampo) {
+    const categorias = [
+        { titulo: '📦 Errores de Almacén y Logística', color: '#fd7e14', opciones: [
+            { val: 'Error de picking', label: 'Error de picking', desc: 'Producto equivocado o medida incorrecta' },
+            { val: 'Mal empaque', label: 'Mal empaque', desc: 'Embalaje deficiente causó rechazo o daño' },
+            { val: 'Falso flete', label: 'Falso flete', desc: 'Cliente no estaba o rechazó en puerta' }
+        ]},
+        { titulo: '⚙️ Calidad y Especificaciones', color: '#6f42c1', opciones: [
+            { val: 'Producto dañado o defectuoso', label: 'Producto dañado', desc: 'Falla de fábrica (óxido, hilos, etc.)' },
+            { val: 'No es el material', label: 'No es el material', desc: 'No cumple la especificación técnica' },
+            { val: 'Insatisfacción con la calidad', label: 'Insatisfacción', desc: 'Acabado o marca no convenció al cliente' }
+        ]},
+        { titulo: '🏢 Errores Administrativos y Comerciales', color: '#0d6efd', opciones: [
+            { val: 'Pedido duplicado', label: 'Pedido duplicado', desc: 'Se despachó dos veces por error' }
+        ]},
+        { titulo: 'Otros', color: '#6c757d', opciones: [
+            { val: 'OTRO', label: 'Otro motivo', desc: 'Especificar manualmente' }
+        ]}
+    ];
+
+    let html = `<div class="text-start" style="max-height: 340px; overflow-y: auto; padding-right: 4px;">`;
+    categorias.forEach(cat => {
+        html += `<div class="fw-bold small text-uppercase mb-2 mt-3" style="color: ${cat.color}; letter-spacing: 0.3px;">${cat.titulo}</div>`;
+        cat.opciones.forEach(op => {
+            html += `
+                <label class="d-flex align-items-start gap-2 p-2 mb-1 rounded border motivo-opcion" 
+                       style="cursor: pointer; transition: all 0.15s;" 
+                       onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                    <input type="radio" name="${nombreCampo}" value="${op.val}" 
+                           data-categoria="${cat.titulo}" data-label="${op.label}"
+                           class="mt-1 flex-shrink-0" style="cursor: pointer;">
+                    <div>
+                        <div class="fw-bold small text-dark">${op.label}</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">${op.desc}</div>
+                    </div>
+                </label>`;
+        });
+    });
+    html += `</div>`;
+    return html;
+}
+
+function verMotivoCompleto(texto) {
+    Swal.fire({
+        title: 'Detalle del Motivo',
+        text: texto,
+        icon: 'info',
+        confirmButtonText: 'Entendido',
+        confirmButtonColor: '#0d6efd'
+    });
+}
+
 </script>
 {% endblock %}
