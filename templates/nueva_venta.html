@@ -2688,24 +2688,28 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         });
 
         $('#cli_doc_select').on('select2:select', function (e) {
+            // ✅ FIX: reset por defecto. Si viene del Directorio, seleccionarClienteDeDirectorio()
+            // lo sobreescribe DESPUÉS (con un setTimeout), así que este reset no lo pisa.
+            vendedorContextoDirectorio = null;
+
             var data = e.params.data;
             if (data.nombre) {
                 $('#cli_nom').val(data.nombre).prop('readonly', true);
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
                 $('#inputDireccionEntrega').val(data.direccion || '');
                 
-                // ❌ QUITADO: $('#cli_tel').val(data.telefono || ''); (ya no viene de aquí)
-                
                 $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
                 $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
                 $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
                 $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
 
-                fetch(`/api/obtener_rubro_cliente/${numero}`)  // o `${data.id}` en select2:select
+                // ✅ FIX: usa data.id (el RUC), no "numero" (esa variable no existe aquí)
+                let urlRubro = `/api/obtener_rubro_cliente/${data.id}`;
+                if (vendedorContextoDirectorio) urlRubro += `?vendedor_id=${vendedorContextoDirectorio}`;
+                fetch(urlRubro)
                     .then(r => r.json())
                     .then(res => { $('#cli_rubro').val(res.rubro || ''); });
                 
-                // ✅ Limpiar campos de contacto ANTES de cargar
                 $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
 
                 $('#hidden_estado').val(data.estado);   
@@ -2715,8 +2719,8 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
 
                 $('#lbl_origen_datos').html(`<i class="bi bi-database"></i> Sistema (${data.updated})`);
                 
-                // ✅ ÚNICA llamada, con la variable correcta: data.id (que es el RUC/documento)
-                cargarContactosAdicionales(data.id);
+                // ✅ FIX: pasa también el contexto de vendedor
+                cargarContactosAdicionales(data.id, vendedorContextoDirectorio);
 
             } else {
                 $('#cli_nom').val("").prop('readonly', true); 
@@ -2733,12 +2737,11 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         });
 
         $('#cli_doc_select').on('select2:clear', function (e) { 
+            vendedorContextoDirectorio = null; // ✅ FIX: reset también al limpiar
             $('#cli_nom').val(""); $('#cli_dir').val(""); $('#cli_tel').val(""); $('#lbl_origen_datos').html(""); 
             $('#inputDireccionEntrega').val("");
-            // LIMPIAR CAMPOS AL BORRAR
             $('#cli_ubigeo').val(""); $('#cli_departamento').val(""); $('#cli_provincia').val(""); $('#cli_distrito').val("");
         });
-
         
 
     $('#productoSelect').select2({ 
@@ -2871,17 +2874,18 @@ function buscarClienteApi(force = false) {
             $('#cli_dir').val(data.direccion || '').prop('readonly', true);
             $('#inputDireccionEntrega').val(data.direccion || '');
             
-            // ❌ QUITADO: ya no se llena cli_tel desde SUNAT (solo viene del contacto)
-            
             $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
             $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
             $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
             $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
-            fetch(`/api/obtener_rubro_cliente/${numero}`)  // o `${data.id}` en select2:select
+
+            // ✅ FIX: usa el contexto de vendedor si viene del Directorio
+            let urlRubro = `/api/obtener_rubro_cliente/${numero}`;
+            if (vendedorContextoDirectorio) urlRubro += `?vendedor_id=${vendedorContextoDirectorio}`;
+            fetch(urlRubro)
                 .then(r => r.json())
                 .then(res => { $('#cli_rubro').val(res.rubro || ''); });
             
-            // ✅ Limpiar campos de contacto ANTES de cargar la lista de este cliente
             $('#cli_atte').val(''); $('#cli_tel').val(''); $('#cli_area').val(''); $('#cli_correo').val('');
             
             $('#hidden_estado').val(data.estado);
@@ -2895,8 +2899,8 @@ function buscarClienteApi(force = false) {
             let iconFuente = data.origen === 'BD' ? '<i class="bi bi-database"></i> BD Local' : '<i class="bi bi-cloud-download"></i> SUNAT';
             $('#lbl_origen_datos').html(`${iconFuente} | <span class="text-primary">${infoAudit}</span>`);
             
-            // ✅ ÚNICA llamada, con la variable correcta: numero
-            cargarContactosAdicionales(numero);
+            // ✅ FIX: usa el mismo contexto para traer los contactos correctos
+            cargarContactosAdicionales(numero, vendedorContextoDirectorio);
             
         } else { 
             Swal.fire('Aviso', data.msg, 'warning'); 
@@ -4572,7 +4576,7 @@ function cargarClientesDirectorio() {
                         <td class="text-end">
                             <div class="d-flex gap-1 justify-content-end">
                                 <button class="btn btn-sm btn-outline-primary fw-bold py-0" 
-                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}')" title="Usar este cliente">
+                                    onclick="seleccionarClienteDeDirectorio('${c.documento}', '${nombreSafe}', '${c.vendedor_dueno_id}')">
                                     <i class="bi bi-check2-square"></i> Usar
                                 </button>
                                 <button class="btn btn-sm btn-outline-secondary py-0" 
@@ -4672,29 +4676,28 @@ function toggleInmediata() {
 
 
 
-function seleccionarClienteDeDirectorio(ruc, nombre) {
-        // 1. Ocultar el modal del directorio inmediatamente
-        const modalEl = document.getElementById('modalDirectorio');
-        if (modalEl) {
-            const modal = bootstrap.Modal.getInstance(modalEl);
-            if(modal) modal.hide();
-        }
+let vendedorContextoDirectorio = null; // se limpia cuando no se usó el Directorio
 
-        // 2. Colocar el RUC y Nombre en el buscador principal (Select2)
-        if ($('#cli_doc_select').find("option[value='" + ruc + "']").length) {
-            $('#cli_doc_select').val(ruc).trigger('change');
-        } else { 
-            var newOption = new Option(ruc + " - " + nombre, ruc, true, true);
-            $('#cli_doc_select').append(newOption).trigger('change');
-        }
-
-        // 3. Ejecutar la búsqueda automáticamente (Simula darle clic a la Lupa)
-        // Esto obligará al sistema a traer TODOS los datos (incluyendo Ubigeo, Dep, Prov, Dist)
-        // Usamos un pequeño retardo de 100ms para asegurar que el Select2 ya tomó el valor
-        setTimeout(() => {
-            buscarClienteApi(false);
-        }, 100);
+function seleccionarClienteDeDirectorio(ruc, nombre, vendedorId) {
+    const modalEl = document.getElementById('modalDirectorio');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if(modal) modal.hide();
     }
+
+    if ($('#cli_doc_select').find("option[value='" + ruc + "']").length) {
+        $('#cli_doc_select').val(ruc).trigger('change');
+    } else { 
+        var newOption = new Option(ruc + " - " + nombre, ruc, true, true);
+        $('#cli_doc_select').append(newOption).trigger('change');
+    }
+
+    // Se fija DESPUÉS del trigger('change'), para que no lo borre el reset de select2:select
+    setTimeout(() => {
+        vendedorContextoDirectorio = vendedorId || null;
+        buscarClienteApi(false);
+    }, 100);
+}
 
 // --- FUNCIÓN QUE COMPARA EL PRECIO DIGITADO VS EL PRECIO ORIGINAL ---
 function compararPrecioAlerta() {
@@ -4943,11 +4946,10 @@ function guardarNuevoContacto() {
 
 let contactosGuardadosCache = [];
 
-function cargarContactosAdicionales(ruc) {
+function cargarContactosAdicionales(ruc, vendedorId = null) {
     const select = document.getElementById('selectContactoGuardado');
     const cont = document.getElementById('listaContactosAdicionales');
     
-    // ✅ Reset inmediato del selector antes de cargar
     select.innerHTML = '<option value="">-- Sin contacto seleccionado --</option>';
     
     if (!ruc) {
@@ -4956,9 +4958,12 @@ function cargarContactosAdicionales(ruc) {
         return;
     }
     
-    select.innerHTML = '<option value="">Cargando...</option>';
+    cont.innerHTML = '<small class="text-muted"><span class="spinner-border spinner-border-sm"></span> Cargando...</small>';
     
-    fetch(`/api/listar_contactos_cliente/${ruc}`)
+    let url = `/api/listar_contactos_cliente/${ruc}`;
+    if (vendedorId) url += `?vendedor_id=${vendedorId}`;
+    
+    fetch(url)
         .then(r => r.json())
         .then(data => {
             contactosGuardadosCache = (data.status === 'success') ? data.contactos : [];

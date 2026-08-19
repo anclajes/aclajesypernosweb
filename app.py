@@ -709,9 +709,16 @@ def obtener_rubro_cliente(documento):
     cliente = Client.query.filter_by(documento=documento).first()
     if not cliente: return {'status': 'success', 'rubro': ''}
     
+    rol = session.get('role')
     user_id = session.get('user_id')
-    registro = ClientRubroVendedor.query.filter_by(client_id=cliente.id, vendedor_id=user_id).first()
+    vendedor_id_param = request.args.get('vendedor_id')
     
+    if vendedor_id_param:
+        target_id = int(vendedor_id_param)
+    else:
+        target_id = user_id  # comportamiento normal: cada quien ve el suyo
+    
+    registro = ClientRubroVendedor.query.filter_by(client_id=cliente.id, vendedor_id=target_id).first()
     return {'status': 'success', 'rubro': registro.rubro if registro else ''}
 
 # --- AGREGAR ESTA FUNCIÓN EN APP.PY (Cerca de las otras APIs) ---
@@ -2842,10 +2849,18 @@ def listar_contactos_cliente(documento):
     rol = session.get('role')
     user_id = session.get('user_id')
     
+    # Si viene un vendedor_id explícito en la URL (desde el Directorio), se usa ese.
+    # Si no viene y el rol es vendedor, se usa su propio ID.
+    # Si no viene y es admin, por defecto no filtra (comportamiento libre fuera del Directorio).
+    vendedor_id_param = request.args.get('vendedor_id')
+    
     query = ClientContact.query.filter_by(client_id=cliente.id)
-    if rol == 'vendedor':
-        # Cada vendedor SOLO ve los contactos que él mismo registró para este RUC
+    
+    if vendedor_id_param:
+        query = query.filter(ClientContact.creado_por_id == int(vendedor_id_param))
+    elif rol == 'vendedor':
         query = query.filter(ClientContact.creado_por_id == user_id)
+    # admin sin vendedor_id explícito: sin filtro (caso de búsqueda libre por RUC, no desde Directorio)
     
     contactos = query.order_by(ClientContact.created_at.desc()).all()
     data = [{
