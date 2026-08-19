@@ -4646,13 +4646,14 @@ def aprobar_pre_cliente(order_id):
     return {'status': 'success', 'msg': 'Se ha autorizado el envío al cliente.'}
 
 # --- RUTA PARA ANULAR COTIZACIÓN DESDE EL HISTORIAL ---
-# --- RUTA PARA ANULAR COTIZACIÓN ---
 @app.route('/api/anular_cotizacion/<int:order_id>', methods=['POST'])
 def anular_cotizacion(order_id):
     if 'user_id' not in session: return {'status': 'error', 'msg': 'No autorizado'}, 401
     
     data = request.get_json() or {}
     motivo = data.get('motivo', '').strip()
+    categoria = data.get('categoria', '').strip()
+    
     if not motivo:
         return {'status': 'error', 'msg': 'El motivo de anulación es obligatorio.'}, 400
         
@@ -4666,13 +4667,13 @@ def anular_cotizacion(order_id):
     if not (es_propietario or es_gerencia):
         return {'status': 'error', 'msg': 'No tiene permisos para anular esta cotización.'}, 403
         
-    # Única restricción: Que no esté ya en logística o ya anulado
     estados_finalizados = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto', 'Por Despachar', 'Despachado', 'Entregado']
     if orden.estado in estados_finalizados:
         return {'status': 'error', 'msg': 'No se puede anular un pedido que ya está en logística o finalizado.'}, 400
         
     orden.estado = 'Anulado'
     orden.motivo_anulacion = motivo
+    orden.categoria_cancelacion = categoria  # ✅ NUEVO: se guarda la categoría del optgroup
     orden.fecha_cancelacion = hora_peru()
     
     db.session.commit()
