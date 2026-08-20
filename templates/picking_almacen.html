@@ -1306,47 +1306,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function construirHtmlMotivos(nombreCampo) {
-    const categorias = [
-        { titulo: '📦 Errores de Almacén y Logística', color: '#fd7e14', opciones: [
-            { val: 'Error de picking', label: 'Error de picking', desc: 'Producto equivocado o medida incorrecta' },
-            { val: 'Mal empaque', label: 'Mal empaque', desc: 'Embalaje deficiente causó rechazo o daño' },
-            { val: 'Falso flete', label: 'Falso flete', desc: 'Cliente no estaba o rechazó en puerta' }
-        ]},
-        { titulo: '⚙️ Calidad y Especificaciones', color: '#6f42c1', opciones: [
-            { val: 'Producto dañado o defectuoso', label: 'Producto dañado', desc: 'Falla de fábrica (óxido, hilos, etc.)' },
-            { val: 'No es el material', label: 'No es el material', desc: 'No cumple la especificación técnica' },
-            { val: 'Insatisfacción con la calidad', label: 'Insatisfacción', desc: 'Acabado o marca no convenció al cliente' }
-        ]},
-        { titulo: '🏢 Errores Administrativos y Comerciales', color: '#0d6efd', opciones: [
-            { val: 'Pedido duplicado', label: 'Pedido duplicado', desc: 'Se despachó dos veces por error' }
-        ]},
-        { titulo: 'Otros', color: '#6c757d', opciones: [
-            { val: 'OTRO', label: 'Otro motivo', desc: 'Especificar manualmente' }
-        ]}
-    ];
-
-    let html = `<div class="text-start" style="max-height: 340px; overflow-y: auto; padding-right: 4px;">`;
-    categorias.forEach(cat => {
-        html += `<div class="fw-bold small text-uppercase mb-2 mt-3" style="color: ${cat.color}; letter-spacing: 0.3px;">${cat.titulo}</div>`;
-        cat.opciones.forEach(op => {
-            html += `
-                <label class="d-flex align-items-start gap-2 p-2 mb-1 rounded border motivo-opcion" 
-                       style="cursor: pointer; transition: all 0.15s;" 
-                       onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
-                    <input type="radio" name="${nombreCampo}" value="${op.val}" 
-                           data-categoria="${cat.titulo}" data-label="${op.label}"
-                           class="mt-1 flex-shrink-0" style="cursor: pointer;">
-                    <div>
-                        <div class="fw-bold small text-dark">${op.label}</div>
-                        <div class="text-muted" style="font-size: 0.75rem;">${op.desc}</div>
-                    </div>
-                </label>`;
-        });
-    });
-    html += `</div>`;
-    return html;
-}
 
 function verMotivoCompleto(texto) {
     Swal.fire({
