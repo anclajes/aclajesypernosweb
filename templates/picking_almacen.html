@@ -1134,7 +1134,6 @@ function cancelarDespacho(orderId, codigoVisual) {
         }
     });
 }
-
 // --- CATEGORÍAS ESTÁNDAR PARA TODAS LAS INCIDENCIAS (Anular / Cancelar / Devolver) ---
 function construirHtmlMotivos(nombreCampo, tipoFormulario) {
     const colores = {
@@ -1219,7 +1218,6 @@ function construirHtmlMotivos(nombreCampo, tipoFormulario) {
             ]}
         ];
     }
-
     // Agregamos siempre "Otros" al final
     categorias.push({ titulo: 'OTROS', opciones: [
         { val: 'OTRO', label: 'Otro motivo', desc: 'Especificar manualmente' }
