@@ -1334,61 +1334,13 @@ function iniciarAnulacion() {
     setTimeout(() => {
         Swal.fire({
             title: '¿Anular esta Cotización?',
-            width: '600px',
+            width: '650px',
             html: `
                 <div class="alert alert-warning text-start small mb-3 shadow-sm border-warning" style="font-size: 0.85rem;">
-                    <i class="bi bi-info-circle-fill"></i> <b>Aviso Importante:</b><br>
-                    Al anular, esta cotización se moverá permanentemente a la pestaña <b>Incidencias</b>. Podrás consultarla cuando quieras, pero quedará bloqueada y ya no podrás editarla.
+                    <i class="bi bi-info-circle-fill"></i> <b>Aviso:</b> Esta cotización se moverá permanentemente a Incidencias y quedará bloqueada.
                 </div>
-                
-                <div class="form-group text-start px-1">
-                    <label class="fw-bold small mb-1 text-secondary">Seleccione un motivo:</label>
-                    <select id="swal-select-motivo" class="form-select shadow-sm mb-3">
-                        <option value="" disabled selected>Seleccione un motivo...</option>
-
-                        <optgroup label="🏢 ERRORES ADMINISTRATIVOS Y SISTEMA">
-                            <option value="Error de tipeo o cálculo">Error de tipeo o cálculo de precios</option>
-                            <option value="Se reemplazará por nueva">Se reemplazará por una nueva cotización</option>
-                            <option value="Cotización confusa">Cotización confusa (falta especificaciones)</option>
-                        </optgroup>
-
-                        <optgroup label="🚚 OPERACIONES Y LOGÍSTICA">
-                            <option value="Sin stock">Sin stock (Falta definitiva del material)</option>
-                            <option value="Demora en entrega">Demora en entrega / Tiempos muy largos</option>
-                        </optgroup>
-
-                        <optgroup label="💼 GESTIÓN COMERCIAL Y PRECIO">
-                            <option value="Precio alto vs competencia">Precio muy alto vs. Competencia</option>
-                            <option value="Falta de seguimiento">Falta de seguimiento oportuno</option>
-                            <option value="Mala experiencia previa">Mala experiencia previa del cliente</option>
-                        </optgroup>
-
-                        <optgroup label="👤 MOTIVOS DEL CLIENTE (EXTERNOS)">
-                            <option value="Proyecto postergado/cancelado">Proyecto postergado o cancelado</option>
-                            <option value="Compró a otro proveedor">Compró a otro proveedor (por precio)</option>
-                            <option value="Compró a fabricante">Compró directo al fabricante</option>
-                            <option value="Problemas de presupuesto">Problemas de presupuesto del cliente</option>
-                            <option value="Cambio de especificaciones">Cambio de especificaciones técnicas</option>
-                            <option value="Cliente desistió">El cliente desistió (Sin motivo claro)</option>
-                        </optgroup>
-
-                        <optgroup label="⚠️ ANULACIONES CRÍTICAS (CON O.C.)">
-                            <option value="[OC] Incumplimiento plazos">[OC] Cancelada por incumplir plazos</option>
-                            <option value="[OC] Falta de pago o crédito">[OC] Rechazo de crédito o falta de pago</option>
-                            <option value="[OC] Cambio drástico pedido">[OC] Cliente cambió drásticamente el pedido</option>
-                            <option value="[OC] Fuerza mayor">[OC] Fuerza mayor o mutuo acuerdo</option>
-                        </optgroup>
-
-                        <optgroup label="OTROS">
-                            <option value="OTRO">Otro motivo (Especificar)...</option>
-                        </optgroup>
-                    </select>
-                    
-                    <div id="swal-motivo-otro-container" class="d-none">
-                        <label class="fw-bold small mb-1 text-danger">Especifique el motivo:</label>
-                        <textarea id="swal-textarea-otro" class="form-control border-danger shadow-sm" rows="3" placeholder="Ej: El cliente pidió cambiar el RUC a última hora..."></textarea>
-                    </div>
-                </div>
+                ${construirHtmlMotivos('motivo_anulacion_radio', 'anulacion')}
+                ${construirHtmlCampoTexto('anulacion_texto_container', 'anulacion_texto')}
             `,
             icon: 'warning',
             showCancelButton: true,
@@ -1398,40 +1350,26 @@ function iniciarAnulacion() {
             cancelButtonText: 'Cancelar',
             
             didOpen: () => {
-                const selectElement = document.getElementById('swal-select-motivo');
-                const otroContainer = document.getElementById('swal-motivo-otro-container');
-                const textareaElement = document.getElementById('swal-textarea-otro');
-                
-                selectElement.addEventListener('change', (e) => {
-                    if (e.target.value === 'OTRO') {
-                        otroContainer.classList.remove('d-none'); 
-                        textareaElement.focus(); 
-                    } else {
-                        otroContainer.classList.add('d-none'); 
-                        textareaElement.value = ''; 
-                    }
-                });
+                actualizarCampoTextoSegunSeleccion('motivo_anulacion_radio', 'anulacion_texto');
             },
             
             preConfirm: () => {
-                const selectEl = document.getElementById('swal-select-motivo');
-                const selectValue = selectEl.value;
-                const textareaValue = document.getElementById('swal-textarea-otro').value.trim();
-
-                if (!selectValue) {
+                const radioSeleccionado = document.querySelector('input[name="motivo_anulacion_radio"]:checked');
+                if (!radioSeleccionado) {
                     Swal.showValidationMessage('Debes seleccionar un motivo de la lista.');
                     return false;
                 }
                 
-                if (selectValue === 'OTRO' && !textareaValue) {
-                    Swal.showValidationMessage('Debes especificar el motivo en el recuadro rojo.');
+                const textoValue = document.getElementById('anulacion_texto').value.trim();
+                if (radioSeleccionado.value === 'OTRO' && !textoValue) {
+                    Swal.showValidationMessage('Debes especificar el motivo.');
                     return false;
                 }
 
-                // Capturamos la categoría (optgroup) para poder hacer estadísticas después
-                const optionSeleccionada = selectEl.options[selectEl.selectedIndex];
-                const categoria = optionSeleccionada.parentElement.label || 'Sin categoría';
-                const motivoFinal = selectValue === 'OTRO' ? textareaValue : optionSeleccionada.text;
+                const categoria = radioSeleccionado.dataset.categoria;
+                const label = radioSeleccionado.dataset.label;
+                let motivoFinal = radioSeleccionado.value === 'OTRO' ? textoValue : label;
+                if (radioSeleccionado.value !== 'OTRO' && textoValue) motivoFinal += ` | ${textoValue}`;
 
                 return { motivo: motivoFinal, categoria: categoria };
             }
@@ -1461,56 +1399,10 @@ function iniciarAnulacion() {
 function anularCotizacionActual(id) {
     Swal.fire({
         title: '¿Anular Cotización?',
-        width: '600px',
+        width: '650px',
         html: `
-            <div class="form-group text-start px-1">
-                <label class="fw-bold small mb-1 text-secondary">Seleccione un motivo:</label>
-                <select id="swal-select-motivo-kanban" class="form-select shadow-sm mb-3">
-                    <option value="" disabled selected>Seleccione un motivo...</option>
-
-                    <optgroup label="🏢 ERRORES ADMINISTRATIVOS Y SISTEMA">
-                        <option value="Error de tipeo o cálculo">Error de tipeo o cálculo de precios</option>
-                        <option value="Se reemplazará por nueva">Se reemplazará por una nueva cotización</option>
-                        <option value="Cotización confusa">Cotización confusa (falta especificaciones)</option>
-                    </optgroup>
-
-                    <optgroup label="🚚 OPERACIONES Y LOGÍSTICA">
-                        <option value="Sin stock">Sin stock (Falta definitiva del material)</option>
-                        <option value="Demora en entrega">Demora en entrega / Tiempos muy largos</option>
-                    </optgroup>
-
-                    <optgroup label="💼 GESTIÓN COMERCIAL Y PRECIO">
-                        <option value="Precio alto vs competencia">Precio muy alto vs. Competencia</option>
-                        <option value="Falta de seguimiento">Falta de seguimiento oportuno</option>
-                        <option value="Mala experiencia previa">Mala experiencia previa del cliente</option>
-                    </optgroup>
-
-                    <optgroup label="👤 MOTIVOS DEL CLIENTE (EXTERNOS)">
-                        <option value="Proyecto postergado/cancelado">Proyecto postergado o cancelado</option>
-                        <option value="Compró a otro proveedor">Compró a otro proveedor (por precio)</option>
-                        <option value="Compró a fabricante">Compró directo al fabricante</option>
-                        <option value="Problemas de presupuesto">Problemas de presupuesto del cliente</option>
-                        <option value="Cambio de especificaciones">Cambio de especificaciones técnicas</option>
-                        <option value="Cliente desistió">El cliente desistió (Sin motivo claro)</option>
-                    </optgroup>
-
-                    <optgroup label="⚠️ ANULACIONES CRÍTICAS (CON O.C.)">
-                        <option value="[OC] Incumplimiento plazos">[OC] Cancelada por incumplir plazos</option>
-                        <option value="[OC] Falta de pago o crédito">[OC] Rechazo de crédito o falta de pago</option>
-                        <option value="[OC] Cambio drástico pedido">[OC] Cliente cambió drásticamente el pedido</option>
-                        <option value="[OC] Fuerza mayor">[OC] Fuerza mayor o mutuo acuerdo</option>
-                    </optgroup>
-
-                    <optgroup label="OTROS">
-                        <option value="OTRO">Otro motivo (Especificar)...</option>
-                    </optgroup>
-                </select>
-
-                <div id="swal-motivo-otro-container-kanban" class="d-none">
-                    <label class="fw-bold small mb-1 text-danger">Especifique el motivo:</label>
-                    <textarea id="swal-textarea-otro-kanban" class="form-control border-danger shadow-sm" rows="3" placeholder="Escriba el motivo detallado..."></textarea>
-                </div>
-            </div>
+            ${construirHtmlMotivos('motivo_anulacion_kanban', 'anulacion')}
+            ${construirHtmlCampoTexto('anulacion_kanban_container', 'anulacion_kanban_texto')}
         `,
         icon: 'warning',
         showCancelButton: true,
@@ -1519,38 +1411,26 @@ function anularCotizacionActual(id) {
         cancelButtonText: 'Cancelar',
 
         didOpen: () => {
-            const selectElement = document.getElementById('swal-select-motivo-kanban');
-            const otroContainer = document.getElementById('swal-motivo-otro-container-kanban');
-            const textareaElement = document.getElementById('swal-textarea-otro-kanban');
-
-            selectElement.addEventListener('change', (e) => {
-                if (e.target.value === 'OTRO') {
-                    otroContainer.classList.remove('d-none');
-                    textareaElement.focus();
-                } else {
-                    otroContainer.classList.add('d-none');
-                    textareaElement.value = '';
-                }
-            });
+            actualizarCampoTextoSegunSeleccion('motivo_anulacion_kanban', 'anulacion_kanban_texto');
         },
 
         preConfirm: () => {
-            const selectEl = document.getElementById('swal-select-motivo-kanban');
-            const selectValue = selectEl.value;
-            const textareaValue = document.getElementById('swal-textarea-otro-kanban').value.trim();
-
-            if (!selectValue) {
+            const radioSeleccionado = document.querySelector('input[name="motivo_anulacion_kanban"]:checked');
+            if (!radioSeleccionado) {
                 Swal.showValidationMessage('Debes seleccionar un motivo de la lista.');
                 return false;
             }
-            if (selectValue === 'OTRO' && !textareaValue) {
-                Swal.showValidationMessage('Debes especificar el motivo en el recuadro rojo.');
+
+            const textoValue = document.getElementById('anulacion_kanban_texto').value.trim();
+            if (radioSeleccionado.value === 'OTRO' && !textoValue) {
+                Swal.showValidationMessage('Debes especificar el motivo.');
                 return false;
             }
 
-            const optionSeleccionada = selectEl.options[selectEl.selectedIndex];
-            const categoria = optionSeleccionada.parentElement.label || 'Sin categoría';
-            const motivoFinal = selectValue === 'OTRO' ? textareaValue : optionSeleccionada.text;
+            const categoria = radioSeleccionado.dataset.categoria;
+            const label = radioSeleccionado.dataset.label;
+            let motivoFinal = radioSeleccionado.value === 'OTRO' ? textoValue : label;
+            if (radioSeleccionado.value !== 'OTRO' && textoValue) motivoFinal += ` | ${textoValue}`;
 
             return { motivo: motivoFinal, categoria: categoria };
         }
@@ -1558,7 +1438,7 @@ function anularCotizacionActual(id) {
         if (result.isConfirmed) {
             bootstrap.Modal.getInstance(document.getElementById('modalDetalleCompleto')).hide();
             Swal.fire({ title: 'Anulando...', didOpen: () => { Swal.showLoading() } });
-
+            
             fetch(`/api/anular_cotizacion/${id}`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -1576,6 +1456,7 @@ function anularCotizacionActual(id) {
         }
     });
 }
+
 
     function verMotivoCompleto(texto) {
         Swal.fire({
@@ -1737,5 +1618,153 @@ function anularCotizacionActual(id) {
     $(document).ready(function() {
         $('#selectFiltroCliente').select2({ placeholder: "Buscar cliente...", allowClear: true, width: '100%', language: { noResults: function() { return "No encontrado"; } } });
     });
+
+    // --- CATEGORÍAS ESTÁNDAR PARA TODAS LAS INCIDENCIAS (Anular / Cancelar / Devolver) ---
+function construirHtmlMotivos(nombreCampo, tipoFormulario) {
+    const colores = {
+        'ADMINISTRATIVOS Y SISTEMA': '#0d6efd',
+        'OPERACIONES Y LOGÍSTICA': '#fd7e14',
+        'GESTIÓN COMERCIAL': '#198754',
+        'MOTIVOS DEL CLIENTE (EXTERNOS)': '#6f42c1',
+        'CALIDAD Y ESPECIFICACIONES': '#dc3545',
+        'OTROS': '#6c757d'
+    };
+
+    // --- Set de categorías por tipo de formulario ---
+    let categorias = [];
+
+    if (tipoFormulario === 'anulacion') {
+        categorias = [
+            { titulo: '🏢 ADMINISTRATIVOS Y SISTEMA', opciones: [
+                { val: 'Error de tipeo o cálculo', label: 'Error de tipeo o cálculo', desc: 'Precios o datos ingresados incorrectamente' },
+                { val: 'Se reemplazará por nueva', label: 'Se reemplazará', desc: 'Se creará una nueva cotización' },
+                { val: 'Cotización confusa', label: 'Cotización confusa', desc: 'Faltan especificaciones claras' }
+            ]},
+            { titulo: '🚚 OPERACIONES Y LOGÍSTICA', opciones: [
+                { val: 'Sin stock', label: 'Sin stock', desc: 'Falta definitiva del material' },
+                { val: 'Demora en entrega', label: 'Demora en entrega', desc: 'Tiempos de entrega muy largos' }
+            ]},
+            { titulo: '💼 GESTIÓN COMERCIAL', opciones: [
+                { val: 'Precio alto vs competencia', label: 'Precio alto vs. competencia', desc: 'El cliente encontró mejor precio' },
+                { val: 'Falta de seguimiento', label: 'Falta de seguimiento', desc: 'No se dio seguimiento oportuno' },
+                { val: 'Mala experiencia previa', label: 'Mala experiencia previa', desc: 'Experiencia negativa anterior del cliente' },
+                { val: '[OC] Incumplimiento plazos', label: '[OC] Incumplió plazos', desc: 'Cancelada por incumplir plazos' }
+            ]},
+            { titulo: '👤 MOTIVOS DEL CLIENTE (EXTERNOS)', opciones: [
+                { val: 'Proyecto postergado/cancelado', label: 'Proyecto postergado', desc: 'El proyecto del cliente se pospuso o canceló' },
+                { val: 'Compró a otro proveedor', label: 'Compró a otro proveedor', desc: 'Por mejor precio en la competencia' },
+                { val: 'Compró a fabricante', label: 'Compró al fabricante', desc: 'Compra directa, sin intermediarios' },
+                { val: 'Problemas de presupuesto', label: 'Problemas de presupuesto', desc: 'El cliente no cuenta con presupuesto' },
+                { val: 'Cambio de especificaciones', label: 'Cambio de especificaciones', desc: 'El cliente cambió los requisitos técnicos' },
+                { val: 'Cliente desistió', label: 'Cliente desistió', desc: 'Sin motivo claro' },
+                { val: '[OC] Cambio drástico pedido', label: '[OC] Cambió el pedido', desc: 'Modificación drástica del pedido original' },
+                { val: '[OC] Fuerza mayor', label: '[OC] Fuerza mayor', desc: 'Fuerza mayor o mutuo acuerdo' }
+            ]}
+        ];
+    }
+
+    if (tipoFormulario === 'cancelacion_despacho') {
+        categorias = [
+            { titulo: '👤 MOTIVOS DEL CLIENTE (EXTERNOS)', opciones: [
+                { val: 'Cliente canceló a última hora', label: 'Canceló a última hora', desc: 'El cliente canceló el pedido' },
+                { val: 'Dirección o contacto erróneo', label: 'Dirección/contacto erróneo', desc: 'Datos incorrectos o desactualizados' },
+                { val: 'Proyecto postergado/cancelado', label: 'Proyecto postergado', desc: 'El proyecto del cliente se pospuso o canceló' },
+                { val: 'Compró a otro proveedor', label: 'Compró a otro proveedor', desc: 'Por mejor precio en la competencia' },
+                { val: 'Compró a fabricante', label: 'Compró al fabricante', desc: 'Compra directa, sin intermediarios' },
+                { val: 'Problemas de presupuesto', label: 'Problemas de presupuesto', desc: 'El cliente no cuenta con presupuesto' },
+                { val: 'Cambio de especificaciones', label: 'Cambio de especificaciones', desc: 'El cliente cambió los requisitos técnicos' },
+                { val: 'Cliente desistió', label: 'Cliente desistió', desc: 'Sin motivo claro' }
+            ]},
+            { titulo: '🚚 OPERACIONES Y LOGÍSTICA', opciones: [
+                { val: 'Quiebre de stock físico', label: 'Quiebre de stock', desc: 'Faltante físico detectado antes de salir' },
+                { val: 'Problema con la agencia', label: 'Problema con agencia', desc: 'Fallo o rechazo de la agencia de transporte' }
+            ]},
+            { titulo: '💼 GESTIÓN COMERCIAL', opciones: [
+                { val: 'Falta de seguimiento', label: 'Falta de seguimiento', desc: 'No se dio seguimiento oportuno' },
+                { val: '[OC] Incumplimiento plazos', label: '[OC] Incumplió plazos', desc: 'Cancelada por incumplir plazos' }
+            ]}
+        ];
+    }
+
+    if (tipoFormulario === 'devolucion') {
+        categorias = [
+            { titulo: '🚚 OPERACIONES Y LOGÍSTICA', opciones: [
+                { val: 'Error de picking', label: 'Error de picking', desc: 'Producto equivocado o medida incorrecta' },
+                { val: 'Mal empaque', label: 'Mal empaque', desc: 'Embalaje deficiente causó rechazo o daño' },
+                { val: 'Falso flete', label: 'Falso flete', desc: 'Cliente no estaba o rechazó en puerta' }
+            ]},
+            { titulo: '⚙️ CALIDAD Y ESPECIFICACIONES', opciones: [
+                { val: 'Producto dañado', label: 'Producto dañado', desc: 'Falla de fábrica (óxido, hilos, etc.)' },
+                { val: 'No es el material', label: 'No es el material', desc: 'No cumple la especificación técnica' },
+                { val: 'Insatisfacción con la calidad', label: 'Insatisfacción', desc: 'Acabado o marca no convenció al cliente' }
+            ]},
+            { titulo: '🏢 ADMINISTRATIVOS Y SISTEMA', opciones: [
+                { val: 'Pedido duplicado', label: 'Pedido duplicado', desc: 'Se despachó dos veces por error' }
+            ]}
+        ];
+    }
+
+    // Agregamos siempre "Otros" al final
+    categorias.push({ titulo: 'OTROS', opciones: [
+        { val: 'OTRO', label: 'Otro motivo', desc: 'Especificar manualmente' }
+    ]});
+
+    let html = `<div class="text-start" style="max-height: 320px; overflow-y: auto; padding-right: 4px;">`;
+    categorias.forEach(cat => {
+        const tituloLimpio = cat.titulo.replace(/^[^\wÁÉÍÓÚÑ]+/u, '').trim(); // quita el emoji para el color-key
+        const color = colores[tituloLimpio] || '#6c757d';
+        html += `<div class="fw-bold small text-uppercase mb-2 mt-3" style="color: ${color}; letter-spacing: 0.3px;">${cat.titulo}</div>`;
+        cat.opciones.forEach(op => {
+            html += `
+                <label class="d-flex align-items-start gap-2 p-2 mb-1 rounded border motivo-opcion" 
+                       style="cursor: pointer; transition: all 0.15s;" 
+                       onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                    <input type="radio" name="${nombreCampo}" value="${op.val}" 
+                           data-categoria="${cat.titulo}" data-label="${op.label}"
+                           class="mt-1 flex-shrink-0" style="cursor: pointer;">
+                    <div>
+                        <div class="fw-bold small text-dark">${op.label}</div>
+                        <div class="text-muted" style="font-size: 0.75rem;">${op.desc}</div>
+                    </div>
+                </label>`;
+        });
+    });
+    html += `</div>`;
+    return html;
+}
+
+// --- Manejo del campo de texto único (evita el doble textarea) ---
+function construirHtmlCampoTexto(idContenedor, idTextarea) {
+    return `
+        <div id="${idContenedor}" class="text-start mt-3">
+            <label class="form-label small mb-1" id="${idTextarea}_label">Detalle adicional (opcional):</label>
+            <textarea id="${idTextarea}" class="form-control" placeholder="Información adicional, si aplica..." rows="2"></textarea>
+        </div>`;
+}
+
+function actualizarCampoTextoSegunSeleccion(nombreCampo, idTextarea) {
+    document.querySelectorAll(`input[name="${nombreCampo}"]`).forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            const textarea = document.getElementById(idTextarea);
+            const label = document.getElementById(idTextarea + '_label');
+            
+            document.querySelectorAll('.motivo-opcion').forEach(l => l.style.borderColor = '#dee2e6');
+            e.target.closest('.motivo-opcion').style.borderColor = '#0d6efd';
+            
+            if (e.target.value === 'OTRO') {
+                label.innerHTML = '<span class="text-danger fw-bold">Especifique el motivo *</span>';
+                textarea.placeholder = 'Escriba el motivo detallado aquí...';
+                textarea.classList.add('border-danger');
+                textarea.value = '';
+                textarea.focus();
+            } else {
+                label.innerHTML = 'Detalle adicional (opcional):';
+                textarea.placeholder = 'Información adicional, si aplica...';
+                textarea.classList.remove('border-danger');
+            }
+        });
+    });
+}
+
 </script>
 {% endblock %}
