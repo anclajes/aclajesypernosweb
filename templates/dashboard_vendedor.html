@@ -42,7 +42,7 @@
 
 <div class="alert alert-light border small py-2 mb-3 d-flex align-items-center gap-2">
     <i class="bi bi-info-circle-fill text-primary"></i>
-    <span>Las cifras de ventas solo incluyen cotizaciones <strong>Entregadas</strong> (stock ya descontado). Haz clic en las barras de los gráficos para ver el detalle.</span>
+    <span>Las cifras de ventas solo incluyen cotizaciones <strong>Entregadas</strong>. Haz clic en las barras de los gráficos para ver el detalle.</span>
 </div>
 
 <!-- KPIs PRINCIPALES -->
@@ -51,23 +51,39 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0B3D91 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">VENTAS HOY</div>
-                <div class="fs-4 fw-bold text-primary">S/ {{ "%.2f"|format(hoy) }}</div>
+                <div class="fs-4 fw-bold text-primary">S/ {{ "{:,.2f}".format(hoy) }}</div>
             </div>
         </div>
     </div>
+
+    <!-- MEJORA 2: BARRA DE PROGRESO DE META -->
     <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
-            <div class="card-body text-center py-3">
-                <div class="text-muted small fw-bold">MES ACTUAL</div>
-                <div class="fs-4 fw-bold text-success">S/ {{ "%.2f"|format(mes) }}</div>
+            <div class="card-body py-3">
+                <div class="text-muted small fw-bold text-center mb-1">MES ACTUAL VS META</div>
+                <div class="fs-4 fw-bold text-success text-center">S/ {{ "{:,.2f}".format(mes) }}</div>
+
+                {% set meta_mes = 50000 %}
+                {% set porcentaje_meta = (mes / meta_mes * 100) if meta_mes > 0 else 0 %}
+
+                <div class="progress mt-2 shadow-sm" style="height: 8px;">
+                    <div class="progress-bar {% if porcentaje_meta >= 100 %}bg-success{% elif porcentaje_meta >= 75 %}bg-info{% else %}bg-warning{% endif %}"
+                         style="width: {{ porcentaje_meta if porcentaje_meta <= 100 else 100 }}%;">
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between mt-1 text-muted" style="font-size: 0.65rem;">
+                    <span>{{ "%.0f"|format(porcentaje_meta) }}% logrado</span>
+                    <span>Meta: S/ {{ "{:,.0f}".format(meta_mes) }}</span>
+                </div>
             </div>
         </div>
     </div>
+
     <div class="col-6 col-md-3">
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #ffc107 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">PERÍODO ({{ cantidad_ventas_periodo }})</div>
-                <div class="fs-4 fw-bold text-dark">S/ {{ "%.2f"|format(total_ventas_periodo) }}</div>
+                <div class="fs-4 fw-bold text-dark">S/ {{ "{:,.2f}".format(total_ventas_periodo) }}</div>
                 <div class="small {% if delta_periodo >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
                     <i class="bi bi-arrow-{% if delta_periodo >= 0 %}up{% else %}down{% endif %}"></i>
                     {{ delta_periodo }}% vs período anterior
@@ -79,25 +95,26 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6f42c1 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">TICKET PROMEDIO</div>
-                <div class="fs-4 fw-bold" style="color:#6f42c1;">S/ {{ "%.2f"|format(ticket_promedio) }}</div>
+                <div class="fs-4 fw-bold" style="color:#6f42c1;">S/ {{ "{:,.2f}".format(ticket_promedio) }}</div>
             </div>
         </div>
     </div>
 </div>
 
 <div class="row g-3 mb-3">
-    <div class="col-12 col-md-4">
+    <div class="col-12 col-md-6">
         <div class="card border-0 shadow-sm h-100 bg-primary bg-opacity-10">
             <div class="card-body py-3 d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small fw-bold"><i class="bi bi-truck"></i> POR DESPACHAR</div>
-                    <div class="fs-5 fw-bold text-primary">S/ {{ "%.2f"|format(monto_por_despachar) }}</div>
+                    <div class="fs-5 fw-bold text-primary">S/ {{ "{:,.2f}".format(monto_por_despachar) }}</div>
+                    <div class="text-muted" style="font-size: 0.65rem;"><i class="bi bi-info-circle"></i> No depende del filtro de fechas</div>
                 </div>
                 <span class="badge bg-primary fs-6">{{ cantidad_por_despachar }}</span>
             </div>
         </div>
     </div>
-    <div class="col-12 col-md-4">
+    <div class="col-12 col-md-6">
         <div class="card border-0 shadow-sm h-100 bg-success bg-opacity-10">
             <div class="card-body py-3">
                 <div class="text-muted small fw-bold"><i class="bi bi-graph-up"></i> TASA DE EFECTIVIDAD</div>
@@ -106,53 +123,50 @@
             </div>
         </div>
     </div>
-    <div class="col-12 col-md-4">
-        <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10">
-            <div class="card-body py-3 d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="text-muted small fw-bold"><i class="bi bi-arrow-return-left"></i> INCIDENCIAS</div>
-                    <div class="fs-5 fw-bold text-danger">{{ total_incidencias_periodo }}</div>
-                    <div class="small text-muted">{{ count_devoluciones }} dev · {{ count_cancelaciones }} canc · {{ count_anuladas }} anul</div>
-                </div>
-                {% if monto_devoluciones > 0 %}<span class="badge bg-danger fs-6">-S/ {{ "%.2f"|format(monto_devoluciones) }}</span>{% endif %}
-            </div>
-        </div>
-    </div>
 </div>
 
-<!-- KANBAN DE ETAPAS -->
-<div class="row g-2 mb-4">
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('historial_ventas', vista='borradores') }}" class="text-decoration-none">
-            <div class="card border-0 shadow-sm bg-light"><div class="card-body py-2 text-center">
-                <div class="fs-5 fw-bold text-secondary">{{ count_borradores }}</div>
-                <div class="small text-muted"><i class="bi bi-pencil-square"></i> En Proceso</div>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('historial_ventas', vista='revision') }}" class="text-decoration-none">
-            <div class="card border-0 shadow-sm bg-light"><div class="card-body py-2 text-center">
-                <div class="fs-5 fw-bold text-warning">{{ count_revision }}</div>
-                <div class="small text-muted"><i class="bi bi-hourglass-split"></i> En Validación</div>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('historial_ventas', vista='historial') }}" class="text-decoration-none">
-            <div class="card border-0 shadow-sm bg-light"><div class="card-body py-2 text-center">
-                <div class="fs-5 fw-bold text-success">{{ count_historial }}</div>
-                <div class="small text-muted"><i class="bi bi-archive"></i> Entregadas</div>
-            </div></div>
-        </a>
-    </div>
-    <div class="col-6 col-md-3">
-        <a href="{{ url_for('historial_ventas', vista='incidencias') }}" class="text-decoration-none">
-            <div class="card border-0 shadow-sm bg-light"><div class="card-body py-2 text-center">
-                <div class="fs-5 fw-bold text-danger">{{ count_incidencias }}</div>
-                <div class="small text-muted"><i class="bi bi-x-octagon-fill"></i> Incidencias</div>
-            </div></div>
-        </a>
+<!-- MEJORA 3: EMBUDO DE CONVERSIÓN -->
+<div class="card border-0 shadow-sm mb-4 bg-light">
+    <div class="card-body p-2 p-md-3">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center text-center gap-2">
+
+            <a href="{{ url_for('historial_ventas', vista='borradores') }}" class="text-decoration-none w-100">
+                <div class="p-2 bg-white rounded shadow-sm border border-secondary border-opacity-25">
+                    <div class="small text-muted fw-bold text-uppercase"><i class="bi bi-pencil-square"></i> 1. En Proceso</div>
+                    <div class="fs-4 fw-bold text-dark">{{ count_borradores }}</div>
+                </div>
+            </a>
+
+            <i class="bi bi-chevron-right text-muted d-none d-md-block"></i>
+
+            <a href="{{ url_for('historial_ventas', vista='revision') }}" class="text-decoration-none w-100">
+                <div class="p-2 bg-white rounded shadow-sm border border-warning border-opacity-50">
+                    <div class="small text-muted fw-bold text-uppercase"><i class="bi bi-hourglass-split text-warning"></i> 2. Validación</div>
+                    <div class="fs-4 fw-bold text-dark">{{ count_revision }}</div>
+                </div>
+            </a>
+
+            <i class="bi bi-chevron-right text-muted d-none d-md-block"></i>
+
+            <a href="{{ url_for('historial_ventas', vista='historial') }}" class="text-decoration-none w-100">
+                <div class="p-2 bg-white rounded shadow-sm border border-success border-opacity-50">
+                    <div class="small text-muted fw-bold text-uppercase"><i class="bi bi-check-circle-fill text-success"></i> 3. Entregadas</div>
+                    <div class="fs-4 fw-bold text-dark">{{ count_historial }}</div>
+                </div>
+            </a>
+
+            <div class="vr mx-2 d-none d-md-block"></div>
+
+            <a href="{{ url_for('historial_ventas', vista='incidencias') }}" class="text-decoration-none w-100">
+                <div class="p-2 bg-danger bg-opacity-10 rounded shadow-sm border border-danger border-opacity-25">
+                    <div class="small text-danger fw-bold text-uppercase"><i class="bi bi-x-octagon-fill"></i> Caídas</div>
+                    <div class="fs-4 fw-bold text-danger">{{ count_incidencias }}</div>
+                </div>
+            </a>
+        </div>
+        <div class="text-center text-muted mt-2" style="font-size: 0.7rem;">
+            <i class="bi bi-info-circle"></i> Estado actual del sistema — no depende del filtro de fechas
+        </div>
     </div>
 </div>
 
@@ -175,7 +189,10 @@
     <!-- TAB RESUMEN -->
     <div class="tab-pane fade show active" id="tabResumen">
         <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white fw-bold text-primary"><i class="bi bi-graph-up-arrow"></i> Evolución de Ventas (6 meses)</div>
+            <div class="card-header bg-white fw-bold text-primary">
+                <i class="bi bi-graph-up-arrow"></i> Evolución de Ventas 
+                <span class="text-muted fw-normal small">({{ fecha_inicio }} al {{ fecha_fin }})</span>
+            </div>
             <div class="card-body"><canvas id="chartVentasMes" height="80"></canvas></div>
         </div>
         <div class="card border-0 shadow-sm mb-3">
@@ -194,7 +211,7 @@
                         <tr>
                             <td class="ps-3 fw-bold">{{ o.cliente.nombre }}</td>
                             <td>{{ o.fecha.strftime('%d/%m/%Y') }}</td>
-                            <td class="text-end">{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "%.2f"|format(o.total) }}</td>
+                            <td class="text-end">{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "{:,.2f}".format(o.total) }}</td>
                             <td class="text-center">
                                 <span class="badge {% if o.estado == 'Entregado' %}bg-success{% elif o.estado in ['Devuelto','Anulado','Despacho Cancelado'] %}bg-danger{% elif o.estado == 'Por Despachar' %}bg-primary{% else %}bg-secondary{% endif %}">{{ o.estado }}</span>
                             </td>
@@ -265,22 +282,31 @@
         </div>
     </div>
 
-        <!-- TAB PÉRDIDAS -->
+    <!-- TAB PÉRDIDAS -->
     <div class="tab-pane fade" id="tabPerdidas">
 
         <div class="alert alert-light border small py-2 mb-3">
             <i class="bi bi-info-circle-fill text-danger"></i>
-            <strong>Pérdida Potencial</strong> = cotizaciones Anuladas o con Despacho Cancelado (nunca se concretó la venta). 
-            <strong>Pérdida Real</strong> = Devoluciones (la venta se concretó pero se revirtió, con costo logístico incluido).
+            <strong>Pérdida Potencial</strong> = Anuladas o con Despacho Cancelado (nunca se concretó la venta).
+            <strong>Pérdida Real</strong> = Devoluciones (la venta se concretó pero se revirtió).
         </div>
 
-        <!-- KPIs de pérdida -->
+        {% if delta_perdida <= -10 %}
+        <div class="alert alert-success small py-2 mb-3 shadow-sm">
+            <i class="bi bi-emoji-smile-fill"></i> <strong>Buen trabajo</strong> — tus pérdidas bajaron {{ (delta_perdida * -1)|round(1) }}% respecto al período anterior.
+        </div>
+        {% elif delta_perdida >= 10 %}
+        <div class="alert alert-danger small py-2 mb-3 shadow-sm">
+            <i class="bi bi-exclamation-triangle-fill"></i> <strong>Atención</strong> — tus pérdidas subieron {{ delta_perdida }}% respecto al período anterior. Revisa el motivo principal abajo.
+        </div>
+        {% endif %}
+
         <div class="row g-3 mb-3">
             <div class="col-6 col-md-3">
                 <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6c757d !important;">
                     <div class="card-body text-center py-3">
                         <div class="text-muted small fw-bold"><i class="bi bi-file-earmark-x"></i> ANULADAS</div>
-                        <div class="fs-5 fw-bold text-secondary">S/ {{ "%.2f"|format(resumen_tipo['Anulado']['monto']) }}</div>
+                        <div class="fs-5 fw-bold text-secondary">S/ {{ "{:,.2f}".format(resumen_tipo['Anulado']['monto']) }}</div>
                         <div class="small text-muted">{{ resumen_tipo['Anulado']['cant'] }} cotizaciones</div>
                     </div>
                 </div>
@@ -289,7 +315,7 @@
                 <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #fd7e14 !important;">
                     <div class="card-body text-center py-3">
                         <div class="text-muted small fw-bold"><i class="bi bi-truck"></i> DESPACHO CANCELADO</div>
-                        <div class="fs-5 fw-bold" style="color:#fd7e14;">S/ {{ "%.2f"|format(resumen_tipo['Despacho Cancelado']['monto']) }}</div>
+                        <div class="fs-5 fw-bold" style="color:#fd7e14;">S/ {{ "{:,.2f}".format(resumen_tipo['Despacho Cancelado']['monto']) }}</div>
                         <div class="small text-muted">{{ resumen_tipo['Despacho Cancelado']['cant'] }} pedidos</div>
                     </div>
                 </div>
@@ -298,7 +324,7 @@
                 <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10" style="border-left: 4px solid #dc3545 !important;">
                     <div class="card-body text-center py-3">
                         <div class="text-muted small fw-bold"><i class="bi bi-arrow-return-left"></i> DEVUELTO (PÉRDIDA REAL)</div>
-                        <div class="fs-5 fw-bold text-danger">S/ {{ "%.2f"|format(resumen_tipo['Devuelto']['monto']) }}</div>
+                        <div class="fs-5 fw-bold text-danger">S/ {{ "{:,.2f}".format(resumen_tipo['Devuelto']['monto']) }}</div>
                         <div class="small text-muted">{{ resumen_tipo['Devuelto']['cant'] }} devoluciones</div>
                     </div>
                 </div>
@@ -309,6 +335,10 @@
                         <div class="text-muted small fw-bold"><i class="bi bi-percent"></i> TASA DE PÉRDIDA</div>
                         <div class="fs-5 fw-bold text-primary">{{ tasa_perdida }}%</div>
                         <div class="small text-muted">de tus cotizaciones creadas</div>
+                        <div class="small {% if delta_perdida <= 0 %}text-success{% else %}text-danger{% endif %} fw-bold mt-1">
+                            <i class="bi bi-arrow-{% if delta_perdida <= 0 %}down{% else %}up{% endif %}"></i>
+                            {{ delta_perdida }}% vs período anterior
+                        </div>
                     </div>
                 </div>
             </div>
@@ -329,12 +359,33 @@
             </div>
         </div>
 
-        <div class="card border-0 shadow-sm clickable-chart">
+        <div class="card border-0 shadow-sm clickable-chart mb-3">
             <div class="card-header bg-white fw-bold text-danger small d-flex justify-content-between">
                 <span><i class="bi bi-list-ol"></i> Top Motivos de Pérdida</span>
                 <small class="text-muted fw-normal">clic para ver el detalle</small>
             </div>
             <div class="card-body"><canvas id="chartMotivosPerdida" height="260"></canvas></div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-12 col-lg-4">
+                <div class="card border-0 shadow-sm h-100 bg-light">
+                    <div class="card-body text-center py-4">
+                        <div class="text-muted small fw-bold mb-1"><i class="bi bi-stopwatch-fill"></i> TIEMPO PROMEDIO HASTA LA PÉRDIDA</div>
+                        <div class="fs-2 fw-bold text-dark">{{ promedio_dias_perdida }}</div>
+                        <div class="text-muted small">días desde la creación hasta la anulación/devolución</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-8">
+                <div class="card border-0 shadow-sm h-100 clickable-chart">
+                    <div class="card-header bg-white fw-bold text-danger small d-flex justify-content-between">
+                        <span><i class="bi bi-people-fill"></i> Clientes con Más Pérdidas</span>
+                        <small class="text-muted fw-normal">clic para ver el detalle</small>
+                    </div>
+                    <div class="card-body"><canvas id="chartClientesPerdida" height="140"></canvas></div>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -372,21 +423,21 @@ const nombresCompletosClientes = {{ top_clientes_full | tojson }};
 const idsClientes = {{ top_clientes_ids | tojson }};
 const cantidadesClientes = {{ top_clientes_qty | tojson }};
 
-// --- GRÁFICO: VENTAS POR MES ---
+// --- VENTAS POR MES ---
 new Chart(document.getElementById('chartVentasMes'), {
     type: 'line',
     data: { labels: {{ labels_meses | tojson }}, datasets: [{ label: 'Ventas (S/)', data: {{ data_meses | tojson }}, borderColor: paletaAzul, backgroundColor: 'rgba(11,61,145,0.1)', fill: true, tension: 0.35, pointBackgroundColor: paletaAzul, pointRadius: 4 }] },
     options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
 });
 
-// --- GRÁFICO: DÍA DE LA SEMANA ---
+// --- DÍA DE LA SEMANA ---
 new Chart(document.getElementById('chartDiaSemana'), {
     type: 'bar',
     data: { labels: {{ dias_semana_nombres | tojson }}, datasets: [{ label: 'S/', data: {{ totales_dia_semana | tojson }}, backgroundColor: paletaMorado, borderRadius: 6 }] },
     options: { responsive: true, plugins: { legend: { display: false } } }
 });
 
-// --- GRÁFICO: TOP PRODUCTOS (clic -> drill-down) ---
+// --- TOP PRODUCTOS ---
 const chartProductos = new Chart(document.getElementById('chartProductos'), {
     type: 'bar',
     data: { labels: {{ top_productos_labels | tojson }}, datasets: [{ label: 'S/', data: {{ top_productos_data | tojson }}, backgroundColor: paletaVerde, borderRadius: 4 }] },
@@ -399,13 +450,12 @@ const chartProductos = new Chart(document.getElementById('chartProductos'), {
         scales: { y: { ticks: { autoSkip: false } } },
         onClick: (evt, elements) => {
             if (!elements.length) return;
-            const idx = elements[0].index;
-            abrirDetalleProducto(nombresCompletosProductos[idx]);
+            abrirDetalleProducto(nombresCompletosProductos[elements[0].index]);
         }
     }
 });
 
-// --- GRÁFICO: TOP CLIENTES (clic -> drill-down) ---
+// --- TOP CLIENTES ---
 const chartClientes = new Chart(document.getElementById('chartClientes'), {
     type: 'bar',
     data: { labels: {{ top_clientes_labels | tojson }}, datasets: [{ label: 'S/', data: {{ top_clientes_data | tojson }}, backgroundColor: paletaAzul, borderRadius: 4 }] },
@@ -424,7 +474,7 @@ const chartClientes = new Chart(document.getElementById('chartClientes'), {
     }
 });
 
-// --- GRÁFICO: TOP LUGARES (con toggle Distrito/Provincia/Departamento + clic) ---
+// --- TOP LUGARES (toggle) ---
 const datasetsGeo = {
     distrito: { labels: {{ lugares_distrito_labels | tojson }}, data: {{ lugares_distrito_data | tojson }} },
     provincia: { labels: {{ lugares_provincia_labels | tojson }}, data: {{ lugares_provincia_data | tojson }} },
@@ -441,8 +491,7 @@ const chartLugares = new Chart(document.getElementById('chartLugares'), {
         onClick: (evt, elements) => {
             if (!elements.length) return;
             const idx = elements[0].index;
-            const valor = datasetsGeo[nivelGeoActual].labels[idx];
-            abrirDetalleLugar(nivelGeoActual, valor);
+            abrirDetalleLugar(nivelGeoActual, datasetsGeo[nivelGeoActual].labels[idx]);
         }
     }
 });
@@ -457,21 +506,21 @@ function cambiarNivelGeo(nivel) {
     });
 }
 
-// --- GRÁFICO: CATEGORÍA (dona) ---
+// --- MIX CATEGORÍA ---
 new Chart(document.getElementById('chartCategoria'), {
     type: 'doughnut',
     data: { labels: {{ categoria_labels | tojson }}, datasets: [{ data: {{ categoria_data | tojson }}, backgroundColor: [paletaAzul, paletaVerde, paletaAmbar, paletaMorado, paletaRojo, '#6c757d'] }] },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+    options: { responsive: true, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
 });
 
-// --- GRÁFICO: CONDICIÓN DE PAGO (dona) ---
+// --- MIX CONDICIÓN DE PAGO ---
 new Chart(document.getElementById('chartPago'), {
     type: 'doughnut',
     data: { labels: {{ pago_labels | tojson }}, datasets: [{ data: {{ pago_data | tojson }}, backgroundColor: [paletaVerde, paletaAmbar, paletaAzul, paletaMorado, paletaRojo, '#6c757d'] }] },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+    options: { responsive: true, cutout: '65%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
 });
 
-// --- DRILL-DOWN: MODALES ---
+// --- DRILL-DOWN GENÉRICO ---
 function abrirModalDetalle(titulo) {
     document.getElementById('modalDetalleTitulo').innerText = titulo;
     document.getElementById('modalDetalleLoading').classList.remove('d-none');
@@ -537,17 +586,17 @@ function abrirDetalleLugar(tipo, valor) {
         });
 }
 
+// --- PÉRDIDAS: variables y gráficos ---
 const motivosPerdidaFull = {{ motivos_perdida_full | tojson }};
 const qtyMotivosPerdida = {{ qty_motivos_perdida | tojson }};
 const tipoMotivosPerdida = {{ tipo_motivos_perdida | tojson }};
+const qtyCategoriaPerdida = {{ qty_categoria_perdida | tojson }};
+const clientesPerdidaFull = {{ clientes_perdida_full | tojson }};
+const clientesPerdidaIds = {{ clientes_perdida_ids | tojson }};
+const clientesPerdidaQty = {{ clientes_perdida_qty | tojson }};
 
-const coloresPorTipo = {
-    'Anulado': '#6c757d',
-    'Despacho Cancelado': '#fd7e14',
-    'Devuelto': '#dc3545'
-};
+const coloresPorTipo = { 'Anulado': '#6c757d', 'Despacho Cancelado': '#fd7e14', 'Devuelto': '#dc3545' };
 
-// --- GRÁFICO: EVOLUCIÓN DE PÉRDIDAS POR MES (barras apiladas) ---
 new Chart(document.getElementById('chartPerdidaMes'), {
     type: 'bar',
     data: {
@@ -565,7 +614,7 @@ new Chart(document.getElementById('chartPerdidaMes'), {
     }
 });
 
-// --- GRÁFICO: DISTRIBUCIÓN POR CATEGORÍA (dona) ---
+// MEJORA 4: dona delgada (cutout 65%)
 new Chart(document.getElementById('chartCategoriaPerdida'), {
     type: 'doughnut',
     data: {
@@ -574,26 +623,21 @@ new Chart(document.getElementById('chartCategoriaPerdida'), {
     },
     options: {
         responsive: true,
+        cutout: '65%',
         plugins: {
             legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
             tooltip: { callbacks: {
-                label: (item) => ` S/ ${item.formattedValue} (${ {{ qty_categoria_perdida | tojson }}[item.dataIndex]} casos)`
+                label: (item) => ` S/ ${item.formattedValue} (${qtyCategoriaPerdida[item.dataIndex]} casos)`
             }}
         }
     }
 });
 
-// --- GRÁFICO: TOP MOTIVOS DE PÉRDIDA (barra horizontal con color por tipo, clic -> drill-down) ---
 new Chart(document.getElementById('chartMotivosPerdida'), {
     type: 'bar',
     data: {
         labels: {{ labels_motivos_perdida | tojson }},
-        datasets: [{
-            label: 'S/ perdido',
-            data: {{ data_motivos_perdida | tojson }},
-            backgroundColor: tipoMotivosPerdida.map(t => coloresPorTipo[t] || '#6c757d'),
-            borderRadius: 4
-        }]
+        datasets: [{ label: 'S/ perdido', data: {{ data_motivos_perdida | tojson }}, backgroundColor: tipoMotivosPerdida.map(t => coloresPorTipo[t] || '#6c757d'), borderRadius: 4 }]
     },
     options: {
         indexAxis: 'y', responsive: true,
@@ -601,18 +645,31 @@ new Chart(document.getElementById('chartMotivosPerdida'), {
             legend: { display: false },
             tooltip: { callbacks: {
                 title: (items) => motivosPerdidaFull[items[0].dataIndex],
-                label: (item) => [
-                    `Tipo: ${tipoMotivosPerdida[item.dataIndex]}`,
-                    `Perdido: S/ ${item.formattedValue}`,
-                    `Casos: ${qtyMotivosPerdida[item.dataIndex]}`
-                ]
+                label: (item) => [`Tipo: ${tipoMotivosPerdida[item.dataIndex]}`, `Perdido: S/ ${item.formattedValue}`, `Casos: ${qtyMotivosPerdida[item.dataIndex]}`]
             }}
         },
         scales: { y: { ticks: { autoSkip: false } } },
         onClick: (evt, elements) => {
             if (!elements.length) return;
+            abrirDetallePerdida(motivosPerdidaFull[elements[0].index]);
+        }
+    }
+});
+
+new Chart(document.getElementById('chartClientesPerdida'), {
+    type: 'bar',
+    data: { labels: {{ clientes_perdida_labels | tojson }}, datasets: [{ label: 'S/ perdido', data: {{ clientes_perdida_data | tojson }}, backgroundColor: paletaRojo, borderRadius: 4 }] },
+    options: {
+        indexAxis: 'y', responsive: true,
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+            title: (items) => clientesPerdidaFull[items[0].dataIndex],
+            label: (item) => [`Perdido: S/ ${item.formattedValue}`, `Casos: ${clientesPerdidaQty[item.dataIndex]}`]
+        }}},
+        scales: { y: { ticks: { autoSkip: false } } },
+        onClick: (evt, elements) => {
+            if (!elements.length) return;
             const idx = elements[0].index;
-            abrirDetallePerdida(motivosPerdidaFull[idx]);
+            abrirDetallePerdidaCliente(clientesPerdidaFull[idx], clientesPerdidaIds[idx]);
         }
     }
 });
@@ -627,6 +684,21 @@ function abrirDetallePerdida(motivo) {
                     <td>${i.fecha}</td>
                     <td>${i.cliente}</td>
                     <td><span class="badge bg-danger">${i.estado}</span></td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                </tr>`);
+        });
+}
+
+function abrirDetallePerdidaCliente(nombreCliente, clienteId) {
+    abrirModalDetalle(`Pérdidas de: ${nombreCliente}`);
+    fetch(`/api/dashboard_vendedor/detalle_perdida_cliente/${clienteId}?fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`)
+        .then(r => r.json()).then(res => {
+            mostrarResultadoDetalle(res.items, ['N° COT', 'Fecha', 'Estado', 'Motivo', 'Monto'], i => `
+                <tr>
+                    <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
+                    <td>${i.fecha}</td>
+                    <td><span class="badge bg-danger">${i.estado}</span></td>
+                    <td class="small">${i.motivo}</td>
                     <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });

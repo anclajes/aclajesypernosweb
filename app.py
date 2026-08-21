@@ -196,7 +196,8 @@ def index():
             fecha_inicio_str = f_ini.strftime('%Y-%m-%d')
             fecha_fin_str = f_fin.strftime('%Y-%m-%d')
 
-        ESTADO_VENTA_REAL = 'Entregado' 
+        ESTADO_VENTA_REAL = 'Entregado'
+        ESTADOS_PERDIDA = ['Anulado', 'Despacho Cancelado', 'Devuelto']
 
         # --- 2. KPIs DEL PERÍODO ---
         total_ventas_periodo = db.session.query(func.sum(Order.total)).filter(
@@ -215,7 +216,7 @@ def index():
             extract('month', Order.fecha) == hoy.month, Order.estado == ESTADO_VENTA_REAL
         ).scalar() or 0
 
-        # --- 3. COMPARATIVO VS PERÍODO ANTERIOR (mismo largo de días, inmediatamente antes) ---
+        # --- 3. COMPARATIVO VS PERÍODO ANTERIOR ---
         duracion = f_fin - f_ini
         f_ini_prev = f_ini - duracion
         f_fin_prev = f_ini
@@ -227,7 +228,7 @@ def index():
         else:
             delta_periodo = 100.0 if total_ventas_periodo > 0 else 0.0
 
-        # --- 4. PENDIENTE DE DESPACHO ---
+        # --- 4. PENDIENTE DE DESPACHO (no depende del filtro de fechas) ---
         monto_por_despachar = db.session.query(func.sum(Order.total)).filter(
             Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
         ).scalar() or 0
@@ -235,7 +236,7 @@ def index():
             Order.vendedor_id == user_id, Order.estado == 'Por Despachar'
         ).count()
 
-        # --- 5. ETAPAS DE COTIZACIONES ---
+        # --- 5. ETAPAS DE COTIZACIONES (no depende del filtro de fechas) ---
         estados_borradores = ['Cotizacion', 'Observado', 'Stock Confirmado', 'Aprobado Pre-Cliente']
         estados_revision = ['Por Verificar', 'Pendiente Aprobacion', 'Revision Pre-Cliente', 'Pendiente Aprobacion Final']
         estados_incidencias = ['Anulado', 'Rechazado', 'Despacho Cancelado', 'Devuelto']
@@ -245,33 +246,18 @@ def index():
         count_historial = Order.query.filter(Order.vendedor_id == user_id, Order.estado == ESTADO_VENTA_REAL).count()
         count_incidencias = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(estados_incidencias)).count()
 
-        count_devoluciones = Order.query.filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
-        ).count()
-        monto_devoluciones = db.session.query(func.sum(Order.total)).filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Devuelto'
-        ).scalar() or 0
-        count_cancelaciones = Order.query.filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Despacho Cancelado'
-        ).count()
-        count_anuladas = Order.query.filter(
-            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == 'Anulado'
-        ).count()
-        total_incidencias_periodo = count_devoluciones + count_cancelaciones + count_anuladas
-
         total_creadas_periodo = Order.query.filter(
             Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin)
         ).count()
         tasa_efectividad = round((cantidad_ventas_periodo / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
 
-        # --- 6. VENTAS POR MES (6 meses) ---
-        seis_meses_atras = hoy.replace(day=1) - timedelta(days=180)
+        # --- 6. VENTAS POR MES (respeta el filtro) ---
         ventas_por_mes_raw = db.session.query(
             extract('year', Order.fecha).label('anio'),
             extract('month', Order.fecha).label('mes'),
             func.sum(Order.total).label('total')
         ).filter(
-            Order.vendedor_id == user_id, Order.fecha >= seis_meses_atras, Order.estado == ESTADO_VENTA_REAL
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado == ESTADO_VENTA_REAL
         ).group_by('anio', 'mes').order_by('anio', 'mes').all()
 
         meses_nombres = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -308,7 +294,7 @@ def index():
         top_clientes_data = [round(float(c.total_monto), 2) for c in top_clientes_raw]
         top_clientes_qty = [int(c.cantidad) for c in top_clientes_raw]
 
-        # --- 9. TOP LUGARES: Distrito, Provincia, Departamento (3 datasets para el toggle) ---
+        # --- 9. TOP LUGARES: Distrito, Provincia, Departamento ---
         def top_lugares_por_campo(campo_client):
             raw = db.session.query(
                 campo_client, func.sum(Order.total).label('total_monto')
@@ -354,13 +340,9 @@ def index():
         # --- 13. ÚLTIMAS COTIZACIONES ---
         mis_ultimas = Order.query.filter_by(vendedor_id=user_id).order_by(Order.fecha.desc()).limit(8).all()
 
-        # --- 14. ANÁLISIS DE PÉRDIDAS (Anulado, Despacho Cancelado, Devuelto) ---
-        ESTADOS_PERDIDA = ['Anulado', 'Despacho Cancelado', 'Devuelto']
-
+        # --- 14. ANÁLISIS DE PÉRDIDAS ---
         ordenes_perdidas = Order.query.filter(
-            Order.vendedor_id == user_id,
-            Order.fecha.between(f_ini, f_fin),
-            Order.estado.in_(ESTADOS_PERDIDA)
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado.in_(ESTADOS_PERDIDA)
         ).all()
 
         resumen_tipo = {
@@ -389,10 +371,8 @@ def index():
         total_perdida_potencial = round(resumen_tipo['Anulado']['monto'] + resumen_tipo['Despacho Cancelado']['monto'], 2)
         total_perdida_real = round(resumen_tipo['Devuelto']['monto'], 2)
         cantidad_perdida_total = len(ordenes_perdidas)
-
         tasa_perdida = round((cantidad_perdida_total / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
 
-        # Top motivos por monto perdido
         top_motivos_perdida_raw = sorted(motivo_perdidas.items(), key=lambda x: x[1]['monto'], reverse=True)[:8]
         labels_motivos_perdida = [(m[0][:28] + '…') if len(m[0]) > 28 else m[0] for m in top_motivos_perdida_raw]
         motivos_perdida_full = [m[0] for m in top_motivos_perdida_raw]
@@ -400,12 +380,10 @@ def index():
         qty_motivos_perdida = [m[1]['cant'] for m in top_motivos_perdida_raw]
         tipo_motivos_perdida = [m[1]['tipo'] for m in top_motivos_perdida_raw]
 
-        # Por categoría (para dona)
         labels_categoria_perdida = list(categoria_perdidas.keys())
         data_categoria_perdida = [round(v['monto'], 2) for v in categoria_perdidas.values()]
         qty_categoria_perdida = [v['cant'] for v in categoria_perdidas.values()]
 
-        # Evolución mensual de pérdidas (mismo rango que ventas)
         perdidas_por_mes_raw = db.session.query(
             extract('year', Order.fecha).label('anio'),
             extract('month', Order.fecha).label('mes'),
@@ -417,9 +395,7 @@ def index():
 
         meses_ordenados = sorted({(int(r.anio), int(r.mes)) for r in perdidas_por_mes_raw})
         labels_perdida_mes = [f"{meses_nombres[m]} {a}" for (a, m) in meses_ordenados]
-        data_perdida_anulado_mes = []
-        data_perdida_despacho_mes = []
-        data_perdida_devuelto_mes = []
+        data_perdida_anulado_mes, data_perdida_despacho_mes, data_perdida_devuelto_mes = [], [], []
         for (a, m) in meses_ordenados:
             an = next((r.total for r in perdidas_por_mes_raw if int(r.anio)==a and int(r.mes)==m and r.estado=='Anulado'), 0)
             de = next((r.total for r in perdidas_por_mes_raw if int(r.anio)==a and int(r.mes)==m and r.estado=='Despacho Cancelado'), 0)
@@ -427,6 +403,39 @@ def index():
             data_perdida_anulado_mes.append(round(float(an), 2))
             data_perdida_despacho_mes.append(round(float(de), 2))
             data_perdida_devuelto_mes.append(round(float(dv), 2))
+
+        # --- 15. COMPARATIVO DE PÉRDIDAS VS PERÍODO ANTERIOR ---
+        total_perdida_anterior = db.session.query(func.sum(Order.total)).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini_prev, f_fin_prev), Order.estado.in_(ESTADOS_PERDIDA)
+        ).scalar() or 0
+        total_perdida_actual_general = total_perdida_potencial + total_perdida_real
+        if total_perdida_anterior > 0:
+            delta_perdida = round(((total_perdida_actual_general - total_perdida_anterior) / total_perdida_anterior) * 100, 1)
+        else:
+            delta_perdida = 100.0 if total_perdida_actual_general > 0 else 0.0
+
+        # --- 16. CLIENTES CON MÁS PÉRDIDAS ---
+        clientes_perdida_raw = db.session.query(
+            Client.id, Client.nombre, func.sum(Order.total).label('total_monto'), func.count(Order.id).label('cantidad')
+        ).join(Order, Order.cliente_id == Client.id).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado.in_(ESTADOS_PERDIDA)
+        ).group_by(Client.id).order_by(text('total_monto DESC')).limit(5).all()
+
+        clientes_perdida_labels = [(c.nombre[:20] + '…') if len(c.nombre) > 20 else c.nombre for c in clientes_perdida_raw]
+        clientes_perdida_full = [c.nombre for c in clientes_perdida_raw]
+        clientes_perdida_ids = [c.id for c in clientes_perdida_raw]
+        clientes_perdida_data = [round(float(c.total_monto), 2) for c in clientes_perdida_raw]
+        clientes_perdida_qty = [int(c.cantidad) for c in clientes_perdida_raw]
+
+        # --- 17. TIEMPO PROMEDIO HASTA LA CANCELACIÓN ---
+        dias_hasta_cancelacion = []
+        for o in ordenes_perdidas:
+            fecha_cierre = o.fecha_cancelacion or o.fecha_devolucion
+            if fecha_cierre:
+                dias = (fecha_cierre - o.fecha).days
+                if dias >= 0:
+                    dias_hasta_cancelacion.append(dias)
+        promedio_dias_perdida = round(sum(dias_hasta_cancelacion) / len(dias_hasta_cancelacion), 1) if dias_hasta_cancelacion else 0
 
         return render_template('dashboard_vendedor.html',
                                hoy=mis_ventas_hoy, mes=mis_ventas_mes,
@@ -438,9 +447,6 @@ def index():
                                cantidad_por_despachar=cantidad_por_despachar,
                                count_borradores=count_borradores, count_revision=count_revision,
                                count_historial=count_historial, count_incidencias=count_incidencias,
-                               count_devoluciones=count_devoluciones, monto_devoluciones=monto_devoluciones,
-                               count_cancelaciones=count_cancelaciones, count_anuladas=count_anuladas,
-                               total_incidencias_periodo=total_incidencias_periodo,
                                tasa_efectividad=tasa_efectividad,
                                labels_meses=labels_meses, data_meses=data_meses,
                                top_productos_labels=top_productos_labels, top_productos_full=top_productos_full,
@@ -456,7 +462,7 @@ def index():
                                dias_semana_nombres=dias_semana_nombres, totales_dia_semana=totales_dia_semana,
                                ultimas=mis_ultimas,
                                fecha_inicio=fecha_inicio_str, fecha_fin=fecha_fin_str,
-                                total_perdida_potencial=total_perdida_potencial,
+                               total_perdida_potencial=total_perdida_potencial,
                                total_perdida_real=total_perdida_real,
                                cantidad_perdida_total=cantidad_perdida_total,
                                tasa_perdida=tasa_perdida,
@@ -472,7 +478,14 @@ def index():
                                labels_perdida_mes=labels_perdida_mes,
                                data_perdida_anulado_mes=data_perdida_anulado_mes,
                                data_perdida_despacho_mes=data_perdida_despacho_mes,
-                               data_perdida_devuelto_mes=data_perdida_devuelto_mes)
+                               data_perdida_devuelto_mes=data_perdida_devuelto_mes,
+                               delta_perdida=delta_perdida,
+                               clientes_perdida_labels=clientes_perdida_labels,
+                               clientes_perdida_full=clientes_perdida_full,
+                               clientes_perdida_ids=clientes_perdida_ids,
+                               clientes_perdida_data=clientes_perdida_data,
+                               clientes_perdida_qty=clientes_perdida_qty,
+                               promedio_dias_perdida=promedio_dias_perdida)
 
     # ======================================================
     # VISTA 3: ALMACÉN (LOGÍSTICA OPERATIVA)
@@ -501,10 +514,7 @@ def dashboard_detalle_perdida():
     f_ini = request.args.get('fecha_inicio')
     f_fin = request.args.get('fecha_fin')
 
-    query = Order.query.filter(
-        Order.vendedor_id == user_id,
-        Order.estado.in_(['Anulado', 'Despacho Cancelado', 'Devuelto'])
-    )
+    query = Order.query.filter(Order.vendedor_id == user_id, Order.estado.in_(['Anulado', 'Despacho Cancelado', 'Devuelto']))
     if f_ini and f_fin:
         start = datetime.strptime(f_ini, '%Y-%m-%d')
         end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
@@ -526,6 +536,31 @@ def dashboard_detalle_perdida():
 
     return {'status': 'success', 'items': data}
 
+@app.route('/api/dashboard_vendedor/detalle_perdida_cliente/<int:cliente_id>')
+def dashboard_detalle_perdida_cliente(cliente_id):
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
+
+    query = Order.query.filter(
+        Order.vendedor_id == user_id, Order.cliente_id == cliente_id,
+        Order.estado.in_(['Anulado', 'Despacho Cancelado', 'Devuelto'])
+    )
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    ordenes = query.order_by(Order.fecha.desc()).all()
+    data = [{
+        'order_id': f"{o.id:05d}", 'fecha': o.fecha.strftime('%d/%m/%Y'),
+        'estado': o.estado, 'moneda': o.moneda, 'total': round(o.total, 2),
+        'motivo': (o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo or 'Sin especificar')
+    } for o in ordenes]
+
+    return {'status': 'success', 'items': data}
+
 @app.route('/api/dashboard_vendedor/detalle_producto')
 def dashboard_detalle_producto():
     if 'user_id' not in session: return {'status': 'error'}, 401
@@ -540,9 +575,7 @@ def dashboard_detalle_producto():
     ).join(OrderDetail, OrderDetail.order_id == Order.id) \
      .join(Product, Product.id == OrderDetail.product_id) \
      .join(Client, Client.id == Order.cliente_id) \
-     .filter(
-        Order.vendedor_id == user_id, Order.estado == 'Entregado', Product.nombre == nombre_producto
-     )
+     .filter(Order.vendedor_id == user_id, Order.estado == 'Entregado', Product.nombre == nombre_producto)
 
     if f_ini and f_fin:
         start = datetime.strptime(f_ini, '%Y-%m-%d')
@@ -565,9 +598,7 @@ def dashboard_detalle_cliente(cliente_id):
     f_ini = request.args.get('fecha_inicio')
     f_fin = request.args.get('fecha_fin')
 
-    query = Order.query.filter(
-        Order.vendedor_id == user_id, Order.estado == 'Entregado', Order.cliente_id == cliente_id
-    )
+    query = Order.query.filter(Order.vendedor_id == user_id, Order.estado == 'Entregado', Order.cliente_id == cliente_id)
     if f_ini and f_fin:
         start = datetime.strptime(f_ini, '%Y-%m-%d')
         end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
@@ -586,7 +617,7 @@ def dashboard_detalle_cliente(cliente_id):
 def dashboard_detalle_lugar():
     if 'user_id' not in session: return {'status': 'error'}, 401
     user_id = session['user_id']
-    tipo = request.args.get('tipo', 'distrito')  # distrito | provincia | departamento
+    tipo = request.args.get('tipo', 'distrito')
     valor = request.args.get('valor', '')
     f_ini = request.args.get('fecha_inicio')
     f_fin = request.args.get('fecha_fin')
@@ -610,6 +641,7 @@ def dashboard_detalle_lugar():
     } for o, cli_nombre in filas]
 
     return {'status': 'success', 'items': data}
+
 
 @app.route('/api/consulta_documento', methods=['POST'])
 def consulta_documento():
