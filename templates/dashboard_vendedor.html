@@ -162,6 +162,12 @@
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabProdCli">Productos & Clientes</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabGeo">Geografía</button></li>
     <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabMix">Mix de Ventas</button></li>
+    <li class="nav-item">
+        <button class="nav-link text-danger" data-bs-toggle="tab" data-bs-target="#tabPerdidas">
+            <i class="bi bi-graph-down-arrow"></i> Pérdidas
+            {% if cantidad_perdida_total > 0 %}<span class="badge bg-danger ms-1">{{ cantidad_perdida_total }}</span>{% endif %}
+        </button>
+    </li>
 </ul>
 
 <div class="tab-content">
@@ -257,6 +263,80 @@
                 </div>
             </div>
         </div>
+    </div>
+
+        <!-- TAB PÉRDIDAS -->
+    <div class="tab-pane fade" id="tabPerdidas">
+
+        <div class="alert alert-light border small py-2 mb-3">
+            <i class="bi bi-info-circle-fill text-danger"></i>
+            <strong>Pérdida Potencial</strong> = cotizaciones Anuladas o con Despacho Cancelado (nunca se concretó la venta). 
+            <strong>Pérdida Real</strong> = Devoluciones (la venta se concretó pero se revirtió, con costo logístico incluido).
+        </div>
+
+        <!-- KPIs de pérdida -->
+        <div class="row g-3 mb-3">
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6c757d !important;">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold"><i class="bi bi-file-earmark-x"></i> ANULADAS</div>
+                        <div class="fs-5 fw-bold text-secondary">S/ {{ "%.2f"|format(resumen_tipo['Anulado']['monto']) }}</div>
+                        <div class="small text-muted">{{ resumen_tipo['Anulado']['cant'] }} cotizaciones</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #fd7e14 !important;">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold"><i class="bi bi-truck"></i> DESPACHO CANCELADO</div>
+                        <div class="fs-5 fw-bold" style="color:#fd7e14;">S/ {{ "%.2f"|format(resumen_tipo['Despacho Cancelado']['monto']) }}</div>
+                        <div class="small text-muted">{{ resumen_tipo['Despacho Cancelado']['cant'] }} pedidos</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10" style="border-left: 4px solid #dc3545 !important;">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold"><i class="bi bi-arrow-return-left"></i> DEVUELTO (PÉRDIDA REAL)</div>
+                        <div class="fs-5 fw-bold text-danger">S/ {{ "%.2f"|format(resumen_tipo['Devuelto']['monto']) }}</div>
+                        <div class="small text-muted">{{ resumen_tipo['Devuelto']['cant'] }} devoluciones</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0B3D91 !important;">
+                    <div class="card-body text-center py-3">
+                        <div class="text-muted small fw-bold"><i class="bi bi-percent"></i> TASA DE PÉRDIDA</div>
+                        <div class="fs-5 fw-bold text-primary">{{ tasa_perdida }}%</div>
+                        <div class="small text-muted">de tus cotizaciones creadas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-lg-7">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-bold text-danger small"><i class="bi bi-graph-down"></i> Evolución de Pérdidas por Mes</div>
+                    <div class="card-body"><canvas id="chartPerdidaMes" height="90"></canvas></div>
+                </div>
+            </div>
+            <div class="col-12 col-lg-5">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-header bg-white fw-bold small"><i class="bi bi-pie-chart-fill"></i> Distribución por Categoría</div>
+                    <div class="card-body"><canvas id="chartCategoriaPerdida"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm clickable-chart">
+            <div class="card-header bg-white fw-bold text-danger small d-flex justify-content-between">
+                <span><i class="bi bi-list-ol"></i> Top Motivos de Pérdida</span>
+                <small class="text-muted fw-normal">clic para ver el detalle</small>
+            </div>
+            <div class="card-body"><canvas id="chartMotivosPerdida" height="260"></canvas></div>
+        </div>
+
     </div>
 
 </div>
@@ -452,6 +532,101 @@ function abrirDetalleLugar(tipo, valor) {
                     <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
                     <td>${i.fecha}</td>
                     <td>${i.cliente}</td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                </tr>`);
+        });
+}
+
+const motivosPerdidaFull = {{ motivos_perdida_full | tojson }};
+const qtyMotivosPerdida = {{ qty_motivos_perdida | tojson }};
+const tipoMotivosPerdida = {{ tipo_motivos_perdida | tojson }};
+
+const coloresPorTipo = {
+    'Anulado': '#6c757d',
+    'Despacho Cancelado': '#fd7e14',
+    'Devuelto': '#dc3545'
+};
+
+// --- GRÁFICO: EVOLUCIÓN DE PÉRDIDAS POR MES (barras apiladas) ---
+new Chart(document.getElementById('chartPerdidaMes'), {
+    type: 'bar',
+    data: {
+        labels: {{ labels_perdida_mes | tojson }},
+        datasets: [
+            { label: 'Anulado', data: {{ data_perdida_anulado_mes | tojson }}, backgroundColor: coloresPorTipo['Anulado'] },
+            { label: 'Despacho Cancelado', data: {{ data_perdida_despacho_mes | tojson }}, backgroundColor: coloresPorTipo['Despacho Cancelado'] },
+            { label: 'Devuelto', data: {{ data_perdida_devuelto_mes | tojson }}, backgroundColor: coloresPorTipo['Devuelto'] }
+        ]
+    },
+    options: {
+        responsive: true,
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } }
+    }
+});
+
+// --- GRÁFICO: DISTRIBUCIÓN POR CATEGORÍA (dona) ---
+new Chart(document.getElementById('chartCategoriaPerdida'), {
+    type: 'doughnut',
+    data: {
+        labels: {{ labels_categoria_perdida | tojson }},
+        datasets: [{ data: {{ data_categoria_perdida | tojson }}, backgroundColor: [paletaRojo, paletaAmbar, paletaMorado, paletaAzul, '#6c757d', paletaVerde] }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+            tooltip: { callbacks: {
+                label: (item) => ` S/ ${item.formattedValue} (${ {{ qty_categoria_perdida | tojson }}[item.dataIndex]} casos)`
+            }}
+        }
+    }
+});
+
+// --- GRÁFICO: TOP MOTIVOS DE PÉRDIDA (barra horizontal con color por tipo, clic -> drill-down) ---
+new Chart(document.getElementById('chartMotivosPerdida'), {
+    type: 'bar',
+    data: {
+        labels: {{ labels_motivos_perdida | tojson }},
+        datasets: [{
+            label: 'S/ perdido',
+            data: {{ data_motivos_perdida | tojson }},
+            backgroundColor: tipoMotivosPerdida.map(t => coloresPorTipo[t] || '#6c757d'),
+            borderRadius: 4
+        }]
+    },
+    options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: {
+                title: (items) => motivosPerdidaFull[items[0].dataIndex],
+                label: (item) => [
+                    `Tipo: ${tipoMotivosPerdida[item.dataIndex]}`,
+                    `Perdido: S/ ${item.formattedValue}`,
+                    `Casos: ${qtyMotivosPerdida[item.dataIndex]}`
+                ]
+            }}
+        },
+        scales: { y: { ticks: { autoSkip: false } } },
+        onClick: (evt, elements) => {
+            if (!elements.length) return;
+            const idx = elements[0].index;
+            abrirDetallePerdida(motivosPerdidaFull[idx]);
+        }
+    }
+});
+
+function abrirDetallePerdida(motivo) {
+    abrirModalDetalle(`Casos de: ${motivo}`);
+    fetch(`/api/dashboard_vendedor/detalle_perdida?motivo=${encodeURIComponent(motivo)}&fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`)
+        .then(r => r.json()).then(res => {
+            mostrarResultadoDetalle(res.items, ['N° COT', 'Fecha', 'Cliente', 'Estado', 'Monto'], i => `
+                <tr>
+                    <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
+                    <td>${i.fecha}</td>
+                    <td>${i.cliente}</td>
+                    <td><span class="badge bg-danger">${i.estado}</span></td>
                     <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });

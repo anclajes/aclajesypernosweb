@@ -196,7 +196,7 @@ def index():
             fecha_inicio_str = f_ini.strftime('%Y-%m-%d')
             fecha_fin_str = f_fin.strftime('%Y-%m-%d')
 
-        ESTADO_VENTA_REAL = 'Entregado'
+        ESTADO_VENTA_REAL = 'Entregado' 
 
         # --- 2. KPIs DEL PERÍODO ---
         total_ventas_periodo = db.session.query(func.sum(Order.total)).filter(
@@ -354,6 +354,80 @@ def index():
         # --- 13. ÚLTIMAS COTIZACIONES ---
         mis_ultimas = Order.query.filter_by(vendedor_id=user_id).order_by(Order.fecha.desc()).limit(8).all()
 
+        # --- 14. ANÁLISIS DE PÉRDIDAS (Anulado, Despacho Cancelado, Devuelto) ---
+        ESTADOS_PERDIDA = ['Anulado', 'Despacho Cancelado', 'Devuelto']
+
+        ordenes_perdidas = Order.query.filter(
+            Order.vendedor_id == user_id,
+            Order.fecha.between(f_ini, f_fin),
+            Order.estado.in_(ESTADOS_PERDIDA)
+        ).all()
+
+        resumen_tipo = {
+            'Anulado': {'cant': 0, 'monto': 0.0},
+            'Despacho Cancelado': {'cant': 0, 'monto': 0.0},
+            'Devuelto': {'cant': 0, 'monto': 0.0}
+        }
+        categoria_perdidas = {}
+        motivo_perdidas = {}
+
+        for o in ordenes_perdidas:
+            resumen_tipo[o.estado]['cant'] += 1
+            resumen_tipo[o.estado]['monto'] += o.total
+
+            cat = o.categoria_cancelacion or 'Sin categoría'
+            categoria_perdidas.setdefault(cat, {'cant': 0, 'monto': 0.0})
+            categoria_perdidas[cat]['cant'] += 1
+            categoria_perdidas[cat]['monto'] += o.total
+
+            motivo_texto = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo or 'Sin especificar'
+            motivo_key = motivo_texto.split(' | ')[0].strip()
+            motivo_perdidas.setdefault(motivo_key, {'cant': 0, 'monto': 0.0, 'categoria': cat, 'tipo': o.estado})
+            motivo_perdidas[motivo_key]['cant'] += 1
+            motivo_perdidas[motivo_key]['monto'] += o.total
+
+        total_perdida_potencial = round(resumen_tipo['Anulado']['monto'] + resumen_tipo['Despacho Cancelado']['monto'], 2)
+        total_perdida_real = round(resumen_tipo['Devuelto']['monto'], 2)
+        cantidad_perdida_total = len(ordenes_perdidas)
+
+        tasa_perdida = round((cantidad_perdida_total / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
+
+        # Top motivos por monto perdido
+        top_motivos_perdida_raw = sorted(motivo_perdidas.items(), key=lambda x: x[1]['monto'], reverse=True)[:8]
+        labels_motivos_perdida = [(m[0][:28] + '…') if len(m[0]) > 28 else m[0] for m in top_motivos_perdida_raw]
+        motivos_perdida_full = [m[0] for m in top_motivos_perdida_raw]
+        data_motivos_perdida = [round(m[1]['monto'], 2) for m in top_motivos_perdida_raw]
+        qty_motivos_perdida = [m[1]['cant'] for m in top_motivos_perdida_raw]
+        tipo_motivos_perdida = [m[1]['tipo'] for m in top_motivos_perdida_raw]
+
+        # Por categoría (para dona)
+        labels_categoria_perdida = list(categoria_perdidas.keys())
+        data_categoria_perdida = [round(v['monto'], 2) for v in categoria_perdidas.values()]
+        qty_categoria_perdida = [v['cant'] for v in categoria_perdidas.values()]
+
+        # Evolución mensual de pérdidas (mismo rango que ventas)
+        perdidas_por_mes_raw = db.session.query(
+            extract('year', Order.fecha).label('anio'),
+            extract('month', Order.fecha).label('mes'),
+            Order.estado,
+            func.sum(Order.total).label('total')
+        ).filter(
+            Order.vendedor_id == user_id, Order.fecha.between(f_ini, f_fin), Order.estado.in_(ESTADOS_PERDIDA)
+        ).group_by('anio', 'mes', Order.estado).order_by('anio', 'mes').all()
+
+        meses_ordenados = sorted({(int(r.anio), int(r.mes)) for r in perdidas_por_mes_raw})
+        labels_perdida_mes = [f"{meses_nombres[m]} {a}" for (a, m) in meses_ordenados]
+        data_perdida_anulado_mes = []
+        data_perdida_despacho_mes = []
+        data_perdida_devuelto_mes = []
+        for (a, m) in meses_ordenados:
+            an = next((r.total for r in perdidas_por_mes_raw if int(r.anio)==a and int(r.mes)==m and r.estado=='Anulado'), 0)
+            de = next((r.total for r in perdidas_por_mes_raw if int(r.anio)==a and int(r.mes)==m and r.estado=='Despacho Cancelado'), 0)
+            dv = next((r.total for r in perdidas_por_mes_raw if int(r.anio)==a and int(r.mes)==m and r.estado=='Devuelto'), 0)
+            data_perdida_anulado_mes.append(round(float(an), 2))
+            data_perdida_despacho_mes.append(round(float(de), 2))
+            data_perdida_devuelto_mes.append(round(float(dv), 2))
+
         return render_template('dashboard_vendedor.html',
                                hoy=mis_ventas_hoy, mes=mis_ventas_mes,
                                total_ventas_periodo=total_ventas_periodo,
@@ -381,7 +455,24 @@ def index():
                                pago_labels=pago_labels, pago_data=pago_data,
                                dias_semana_nombres=dias_semana_nombres, totales_dia_semana=totales_dia_semana,
                                ultimas=mis_ultimas,
-                               fecha_inicio=fecha_inicio_str, fecha_fin=fecha_fin_str)
+                               fecha_inicio=fecha_inicio_str, fecha_fin=fecha_fin_str,
+                                total_perdida_potencial=total_perdida_potencial,
+                               total_perdida_real=total_perdida_real,
+                               cantidad_perdida_total=cantidad_perdida_total,
+                               tasa_perdida=tasa_perdida,
+                               resumen_tipo=resumen_tipo,
+                               labels_motivos_perdida=labels_motivos_perdida,
+                               motivos_perdida_full=motivos_perdida_full,
+                               data_motivos_perdida=data_motivos_perdida,
+                               qty_motivos_perdida=qty_motivos_perdida,
+                               tipo_motivos_perdida=tipo_motivos_perdida,
+                               labels_categoria_perdida=labels_categoria_perdida,
+                               data_categoria_perdida=data_categoria_perdida,
+                               qty_categoria_perdida=qty_categoria_perdida,
+                               labels_perdida_mes=labels_perdida_mes,
+                               data_perdida_anulado_mes=data_perdida_anulado_mes,
+                               data_perdida_despacho_mes=data_perdida_despacho_mes,
+                               data_perdida_devuelto_mes=data_perdida_devuelto_mes)
 
     # ======================================================
     # VISTA 3: ALMACÉN (LOGÍSTICA OPERATIVA)
@@ -402,7 +493,38 @@ def index():
                                total_alertas=total_alertas)
 
 
+@app.route('/api/dashboard_vendedor/detalle_perdida')
+def dashboard_detalle_perdida():
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    motivo = request.args.get('motivo', '')
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
 
+    query = Order.query.filter(
+        Order.vendedor_id == user_id,
+        Order.estado.in_(['Anulado', 'Despacho Cancelado', 'Devuelto'])
+    )
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    ordenes = query.all()
+    filtradas = []
+    for o in ordenes:
+        texto = o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo or 'Sin especificar'
+        if texto.split(' | ')[0].strip() == motivo:
+            filtradas.append(o)
+
+    filtradas.sort(key=lambda x: x.fecha, reverse=True)
+    data = [{
+        'order_id': f"{o.id:05d}", 'fecha': o.fecha.strftime('%d/%m/%Y'),
+        'cliente': o.cliente.nombre if o.cliente else '-',
+        'estado': o.estado, 'moneda': o.moneda, 'total': round(o.total, 2)
+    } for o in filtradas]
+
+    return {'status': 'success', 'items': data}
 
 @app.route('/api/dashboard_vendedor/detalle_producto')
 def dashboard_detalle_producto():
