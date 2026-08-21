@@ -373,16 +373,27 @@ def index():
         cantidad_perdida_total = len(ordenes_perdidas)
         tasa_perdida = round((cantidad_perdida_total / total_creadas_periodo * 100), 1) if total_creadas_periodo > 0 else 0
 
+        # --- Categorías ordenadas por monto (para el gráfico principal) ---
+        categorias_ordenadas = sorted(categoria_perdidas.items(), key=lambda x: x[1]['monto'], reverse=True)
+        labels_categoria_perdida = [c[0] for c in categorias_ordenadas]
+        data_categoria_perdida = [round(c[1]['monto'], 2) for c in categorias_ordenadas]
+        qty_categoria_perdida = [c[1]['cant'] for c in categorias_ordenadas]
+
+        # % que representa cada categoría del total perdido
+        total_perdido_general = sum(c[1]['monto'] for c in categorias_ordenadas) or 1
+        pct_categoria_perdida = [round((c[1]['monto'] / total_perdido_general) * 100, 1) for c in categorias_ordenadas]
+
+        # Categoría que más duele (para el mensaje destacado)
+        categoria_top = categorias_ordenadas[0][0] if categorias_ordenadas else None
+        categoria_top_monto = round(categorias_ordenadas[0][1]['monto'], 2) if categorias_ordenadas else 0
+        categoria_top_pct = pct_categoria_perdida[0] if pct_categoria_perdida else 0
+
         top_motivos_perdida_raw = sorted(motivo_perdidas.items(), key=lambda x: x[1]['monto'], reverse=True)[:8]
         labels_motivos_perdida = [(m[0][:28] + '…') if len(m[0]) > 28 else m[0] for m in top_motivos_perdida_raw]
         motivos_perdida_full = [m[0] for m in top_motivos_perdida_raw]
         data_motivos_perdida = [round(m[1]['monto'], 2) for m in top_motivos_perdida_raw]
         qty_motivos_perdida = [m[1]['cant'] for m in top_motivos_perdida_raw]
         tipo_motivos_perdida = [m[1]['tipo'] for m in top_motivos_perdida_raw]
-
-        labels_categoria_perdida = list(categoria_perdidas.keys())
-        data_categoria_perdida = [round(v['monto'], 2) for v in categoria_perdidas.values()]
-        qty_categoria_perdida = [v['cant'] for v in categoria_perdidas.values()]
 
         perdidas_por_mes_raw = db.session.query(
             extract('year', Order.fecha).label('anio'),
@@ -485,7 +496,11 @@ def index():
                                clientes_perdida_ids=clientes_perdida_ids,
                                clientes_perdida_data=clientes_perdida_data,
                                clientes_perdida_qty=clientes_perdida_qty,
-                               promedio_dias_perdida=promedio_dias_perdida)
+                               promedio_dias_perdida=promedio_dias_perdida,
+                               categoria_top=categoria_top,
+                                categoria_top_monto=categoria_top_monto,
+                                categoria_top_pct=categoria_top_pct,
+                                pct_categoria_perdida=pct_categoria_perdida)
 
     # ======================================================
     # VISTA 3: ALMACÉN (LOGÍSTICA OPERATIVA)
@@ -504,6 +519,34 @@ def index():
                                prioritarios=prioritarios,
                                alertas=alertas_muestra,
                                total_alertas=total_alertas)
+
+
+@app.route('/api/dashboard_vendedor/detalle_perdida_categoria')
+def dashboard_detalle_perdida_categoria():
+    if 'user_id' not in session: return {'status': 'error'}, 401
+    user_id = session['user_id']
+    categoria = request.args.get('categoria', '')
+    f_ini = request.args.get('fecha_inicio')
+    f_fin = request.args.get('fecha_fin')
+
+    query = Order.query.filter(
+        Order.vendedor_id == user_id, Order.estado.in_(['Anulado', 'Despacho Cancelado', 'Devuelto']),
+        Order.categoria_cancelacion == categoria
+    )
+    if f_ini and f_fin:
+        start = datetime.strptime(f_ini, '%Y-%m-%d')
+        end = datetime.strptime(f_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(Order.fecha.between(start, end))
+
+    ordenes = query.order_by(Order.fecha.desc()).all()
+    data = [{
+        'order_id': f"{o.id:05d}", 'fecha': o.fecha.strftime('%d/%m/%Y'),
+        'cliente': o.cliente.nombre if o.cliente else '-', 'estado': o.estado,
+        'motivo': (o.detalle_cancelacion or o.motivo_anulacion or o.motivo_devolucion or o.motivo_rechazo or 'Sin especificar'),
+        'total': round(o.total, 2)
+    } for o in ordenes]
+
+    return {'status': 'success', 'items': data}
 
 
 @app.route('/api/dashboard_vendedor/detalle_perdida')
@@ -1252,7 +1295,7 @@ def exportar_directorio_clientes():
             'Estado SUNAT': c.estado or '-',
             'Condición SUNAT': c.condicion or '-',
             'N° Ventas Entregadas (de este vendedor)': len(ordenes_entregadas),
-            'Total Vendido (S/)': round(total_pen, 2),
+            'Total Vendido ($)': round(total_pen, 2),
             'Total Vendido ($)': round(total_usd, 2),
             'Última Actualización Ficha': c.last_updated.strftime('%d/%m/%Y %H:%M') if c.last_updated else '-'
         })
@@ -1467,7 +1510,7 @@ def exportar_historial_excel():
                 'Estado SUNAT': c.estado or '-',
                 'Condición SUNAT': c.condicion or '-',
                 'N° Cotizaciones (filtro actual)': 0,
-                'Total Vendido (S/)': 0.0,
+                'Total Vendido ($)': 0.0,
                 'Total Vendido ($)': 0.0,
                 'Primera Compra': o.fecha,
                 'Última Compra': o.fecha,
@@ -1477,7 +1520,7 @@ def exportar_historial_excel():
         reg = clientes_map[doc]
         reg['N° Cotizaciones (filtro actual)'] += 1
         if o.moneda == 'PEN':
-            reg['Total Vendido (S/)'] += o.total
+            reg['Total Vendido ($)'] += o.total
         else:
             reg['Total Vendido ($)'] += o.total
         if o.fecha < reg['Primera Compra']:
@@ -1489,7 +1532,7 @@ def exportar_historial_excel():
     for doc, reg in clientes_map.items():
         reg['Primera Compra'] = reg['Primera Compra'].strftime('%d/%m/%Y')
         reg['Última Compra'] = reg['Última Compra'].strftime('%d/%m/%Y')
-        reg['Total Vendido (S/)'] = round(reg['Total Vendido (S/)'], 2)
+        reg['Total Vendido ($)'] = round(reg['Total Vendido ($)'], 2)
         reg['Total Vendido ($)'] = round(reg['Total Vendido ($)'], 2)
         billetera_data.append(reg)
     

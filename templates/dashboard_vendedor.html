@@ -51,7 +51,7 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0B3D91 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">VENTAS HOY</div>
-                <div class="fs-4 fw-bold text-primary">S/ {{ "{:,.2f}".format(hoy) }}</div>
+                <div class="fs-4 fw-bold text-primary">$ {{ "{:,.2f}".format(hoy) }}</div>
             </div>
         </div>
     </div>
@@ -61,7 +61,7 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #198754 !important;">
             <div class="card-body py-3">
                 <div class="text-muted small fw-bold text-center mb-1">MES ACTUAL VS META</div>
-                <div class="fs-4 fw-bold text-success text-center">S/ {{ "{:,.2f}".format(mes) }}</div>
+                <div class="fs-4 fw-bold text-success text-center">$ {{ "{:,.2f}".format(mes) }}</div>
 
                 {% set meta_mes = 50000 %}
                 {% set porcentaje_meta = (mes / meta_mes * 100) if meta_mes > 0 else 0 %}
@@ -73,7 +73,7 @@
                 </div>
                 <div class="d-flex justify-content-between mt-1 text-muted" style="font-size: 0.65rem;">
                     <span>{{ "%.0f"|format(porcentaje_meta) }}% logrado</span>
-                    <span>Meta: S/ {{ "{:,.0f}".format(meta_mes) }}</span>
+                    <span>Meta: $ {{ "{:,.0f}".format(meta_mes) }}</span>
                 </div>
             </div>
         </div>
@@ -83,7 +83,7 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #ffc107 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">PERÍODO ({{ cantidad_ventas_periodo }})</div>
-                <div class="fs-4 fw-bold text-dark">S/ {{ "{:,.2f}".format(total_ventas_periodo) }}</div>
+                <div class="fs-4 fw-bold text-dark">$ {{ "{:,.2f}".format(total_ventas_periodo) }}</div>
                 <div class="small {% if delta_periodo >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
                     <i class="bi bi-arrow-{% if delta_periodo >= 0 %}up{% else %}down{% endif %}"></i>
                     {{ delta_periodo }}% vs período anterior
@@ -95,7 +95,7 @@
         <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6f42c1 !important;">
             <div class="card-body text-center py-3">
                 <div class="text-muted small fw-bold">TICKET PROMEDIO</div>
-                <div class="fs-4 fw-bold" style="color:#6f42c1;">S/ {{ "{:,.2f}".format(ticket_promedio) }}</div>
+                <div class="fs-4 fw-bold" style="color:#6f42c1;">$ {{ "{:,.2f}".format(ticket_promedio) }}</div>
             </div>
         </div>
     </div>
@@ -107,7 +107,7 @@
             <div class="card-body py-3 d-flex justify-content-between align-items-center">
                 <div>
                     <div class="text-muted small fw-bold"><i class="bi bi-truck"></i> POR DESPACHAR</div>
-                    <div class="fs-5 fw-bold text-primary">S/ {{ "{:,.2f}".format(monto_por_despachar) }}</div>
+                    <div class="fs-5 fw-bold text-primary">$ {{ "{:,.2f}".format(monto_por_despachar) }}</div>
                     <div class="text-muted" style="font-size: 0.65rem;"><i class="bi bi-info-circle"></i> No depende del filtro de fechas</div>
                 </div>
                 <span class="badge bg-primary fs-6">{{ cantidad_por_despachar }}</span>
@@ -211,7 +211,7 @@
                         <tr>
                             <td class="ps-3 fw-bold">{{ o.cliente.nombre }}</td>
                             <td>{{ o.fecha.strftime('%d/%m/%Y') }}</td>
-                            <td class="text-end">{{ "S/" if o.moneda == 'PEN' else "$" }} {{ "{:,.2f}".format(o.total) }}</td>
+                            <td class="text-end">{{ "$" if o.moneda == 'PEN' else "$" }} {{ "{:,.2f}".format(o.total) }}</td>
                             <td class="text-center">
                                 <span class="badge {% if o.estado == 'Entregado' %}bg-success{% elif o.estado in ['Devuelto','Anulado','Despacho Cancelado'] %}bg-danger{% elif o.estado == 'Por Despachar' %}bg-primary{% else %}bg-secondary{% endif %}">{{ o.estado }}</span>
                             </td>
@@ -301,45 +301,22 @@
         </div>
         {% endif %}
 
-        <div class="row g-3 mb-3">
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #6c757d !important;">
-                    <div class="card-body text-center py-3">
-                        <div class="text-muted small fw-bold"><i class="bi bi-file-earmark-x"></i> ANULADAS</div>
-                        <div class="fs-5 fw-bold text-secondary">S/ {{ "{:,.2f}".format(resumen_tipo['Anulado']['monto']) }}</div>
-                        <div class="small text-muted">{{ resumen_tipo['Anulado']['cant'] }} cotizaciones</div>
-                    </div>
-                </div>
+        {% if categoria_top %}
+        <div class="alert alert-danger border-0 shadow-sm small py-2 mb-3 d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-diamond-fill fs-5"></i>
+            <span><strong>{{ categoria_top }}</strong> es tu principal fuente de pérdidas: 
+            $ {{ "{:,.2f}".format(categoria_top_monto) }} ({{ categoria_top_pct }}% del total perdido en el período).</span>
+        </div>
+        {% endif %}
+
+        <div class="card border-0 shadow-sm mb-3 clickable-chart">
+            <div class="card-header bg-white fw-bold text-danger small d-flex justify-content-between">
+                <span><i class="bi bi-diagram-3-fill"></i> Pérdidas por Categoría</span>
+                <small class="text-muted fw-normal">clic en una barra para ver el detalle</small>
             </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #fd7e14 !important;">
-                    <div class="card-body text-center py-3">
-                        <div class="text-muted small fw-bold"><i class="bi bi-truck"></i> DESPACHO CANCELADO</div>
-                        <div class="fs-5 fw-bold" style="color:#fd7e14;">S/ {{ "{:,.2f}".format(resumen_tipo['Despacho Cancelado']['monto']) }}</div>
-                        <div class="small text-muted">{{ resumen_tipo['Despacho Cancelado']['cant'] }} pedidos</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm h-100 bg-danger bg-opacity-10" style="border-left: 4px solid #dc3545 !important;">
-                    <div class="card-body text-center py-3">
-                        <div class="text-muted small fw-bold"><i class="bi bi-arrow-return-left"></i> DEVUELTO (PÉRDIDA REAL)</div>
-                        <div class="fs-5 fw-bold text-danger">S/ {{ "{:,.2f}".format(resumen_tipo['Devuelto']['monto']) }}</div>
-                        <div class="small text-muted">{{ resumen_tipo['Devuelto']['cant'] }} devoluciones</div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-6 col-md-3">
-                <div class="card border-0 shadow-sm h-100" style="border-left: 4px solid #0B3D91 !important;">
-                    <div class="card-body text-center py-3">
-                        <div class="text-muted small fw-bold"><i class="bi bi-percent"></i> TASA DE PÉRDIDA</div>
-                        <div class="fs-5 fw-bold text-primary">{{ tasa_perdida }}%</div>
-                        <div class="small text-muted">de tus cotizaciones creadas</div>
-                        <div class="small {% if delta_perdida <= 0 %}text-success{% else %}text-danger{% endif %} fw-bold mt-1">
-                            <i class="bi bi-arrow-{% if delta_perdida <= 0 %}down{% else %}up{% endif %}"></i>
-                            {{ delta_perdida }}% vs período anterior
-                        </div>
-                    </div>
+            <div class="card-body">
+                <div style="position: relative; height: 220px;">
+                    <canvas id="chartCategoriaPerdida"></canvas>
                 </div>
             </div>
         </div>
@@ -353,18 +330,26 @@
             </div>
             <div class="col-12 col-lg-5">
                 <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white fw-bold small"><i class="bi bi-pie-chart-fill"></i> Distribución por Categoría</div>
-                    <div class="card-body"><canvas id="chartCategoriaPerdida"></canvas></div>
+                    <div class="card-header bg-white fw-bold small"><i class="bi bi-pie-chart-fill"></i> Peso de cada Categoría</div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 220px;">
+                            <canvas id="chartCategoriaDona"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="card border-0 shadow-sm clickable-chart mb-3">
             <div class="card-header bg-white fw-bold text-danger small d-flex justify-content-between">
-                <span><i class="bi bi-list-ol"></i> Top Motivos de Pérdida</span>
+                <span><i class="bi bi-list-ol"></i> Top Motivos Específicos</span>
                 <small class="text-muted fw-normal">clic para ver el detalle</small>
             </div>
-            <div class="card-body"><canvas id="chartMotivosPerdida" height="260"></canvas></div>
+            <div class="card-body">
+                <div style="position: relative; height: 280px;">
+                    <canvas id="chartMotivosPerdida"></canvas>
+                </div>
+            </div>
         </div>
 
         <div class="row g-3">
@@ -373,7 +358,17 @@
                     <div class="card-body text-center py-4">
                         <div class="text-muted small fw-bold mb-1"><i class="bi bi-stopwatch-fill"></i> TIEMPO PROMEDIO HASTA LA PÉRDIDA</div>
                         <div class="fs-2 fw-bold text-dark">{{ promedio_dias_perdida }}</div>
-                        <div class="text-muted small">días desde la creación hasta la anulación/devolución</div>
+                        <div class="text-muted small mb-2">días en promedio</div>
+                        <div class="text-muted" style="font-size: 0.7rem; line-height: 1.3;">
+                            Tiempo entre la creación de la cotización y su anulación/cancelación/devolución.
+                            {% if promedio_dias_perdida <= 3 %}
+                                <span class="text-success fw-bold">Se detectan rápido, buena señal.</span>
+                            {% elif promedio_dias_perdida <= 10 %}
+                                <span class="text-warning fw-bold">Tiempo moderado de seguimiento.</span>
+                            {% else %}
+                                <span class="text-danger fw-bold">Considera hacer seguimiento más temprano.</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -383,7 +378,11 @@
                         <span><i class="bi bi-people-fill"></i> Clientes con Más Pérdidas</span>
                         <small class="text-muted fw-normal">clic para ver el detalle</small>
                     </div>
-                    <div class="card-body"><canvas id="chartClientesPerdida" height="140"></canvas></div>
+                    <div class="card-body">
+                        <div style="position: relative; height: 220px;">
+                            <canvas id="chartClientesPerdida"></canvas>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -426,26 +425,26 @@ const cantidadesClientes = {{ top_clientes_qty | tojson }};
 // --- VENTAS POR MES ---
 new Chart(document.getElementById('chartVentasMes'), {
     type: 'line',
-    data: { labels: {{ labels_meses | tojson }}, datasets: [{ label: 'Ventas (S/)', data: {{ data_meses | tojson }}, borderColor: paletaAzul, backgroundColor: 'rgba(11,61,145,0.1)', fill: true, tension: 0.35, pointBackgroundColor: paletaAzul, pointRadius: 4 }] },
+    data: { labels: {{ labels_meses | tojson }}, datasets: [{ label: 'Ventas ($)', data: {{ data_meses | tojson }}, borderColor: paletaAzul, backgroundColor: 'rgba(11,61,145,0.1)', fill: true, tension: 0.35, pointBackgroundColor: paletaAzul, pointRadius: 4 }] },
     options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
 });
 
 // --- DÍA DE LA SEMANA ---
 new Chart(document.getElementById('chartDiaSemana'), {
     type: 'bar',
-    data: { labels: {{ dias_semana_nombres | tojson }}, datasets: [{ label: 'S/', data: {{ totales_dia_semana | tojson }}, backgroundColor: paletaMorado, borderRadius: 6 }] },
+    data: { labels: {{ dias_semana_nombres | tojson }}, datasets: [{ label: '$', data: {{ totales_dia_semana | tojson }}, backgroundColor: paletaMorado, borderRadius: 6 }] },
     options: { responsive: true, plugins: { legend: { display: false } } }
 });
 
 // --- TOP PRODUCTOS ---
 const chartProductos = new Chart(document.getElementById('chartProductos'), {
     type: 'bar',
-    data: { labels: {{ top_productos_labels | tojson }}, datasets: [{ label: 'S/', data: {{ top_productos_data | tojson }}, backgroundColor: paletaVerde, borderRadius: 4 }] },
+    data: { labels: {{ top_productos_labels | tojson }}, datasets: [{ label: '$', data: {{ top_productos_data | tojson }}, backgroundColor: paletaVerde, borderRadius: 4 }] },
     options: {
         indexAxis: 'y', responsive: true,
         plugins: { legend: { display: false }, tooltip: { callbacks: {
             title: (items) => nombresCompletosProductos[items[0].dataIndex],
-            label: (item) => [`Vendido: S/ ${item.formattedValue}`, `Cantidad: ${cantidadesProductos[item.dataIndex]} unid.`]
+            label: (item) => [`Vendido: $ ${item.formattedValue}`, `Cantidad: ${cantidadesProductos[item.dataIndex]} unid.`]
         }}},
         scales: { y: { ticks: { autoSkip: false } } },
         onClick: (evt, elements) => {
@@ -458,12 +457,12 @@ const chartProductos = new Chart(document.getElementById('chartProductos'), {
 // --- TOP CLIENTES ---
 const chartClientes = new Chart(document.getElementById('chartClientes'), {
     type: 'bar',
-    data: { labels: {{ top_clientes_labels | tojson }}, datasets: [{ label: 'S/', data: {{ top_clientes_data | tojson }}, backgroundColor: paletaAzul, borderRadius: 4 }] },
+    data: { labels: {{ top_clientes_labels | tojson }}, datasets: [{ label: '$', data: {{ top_clientes_data | tojson }}, backgroundColor: paletaAzul, borderRadius: 4 }] },
     options: {
         indexAxis: 'y', responsive: true,
         plugins: { legend: { display: false }, tooltip: { callbacks: {
             title: (items) => nombresCompletosClientes[items[0].dataIndex],
-            label: (item) => [`Comprado: S/ ${item.formattedValue}`, `Cotizaciones: ${cantidadesClientes[item.dataIndex]}`]
+            label: (item) => [`Comprado: $ ${item.formattedValue}`, `Cotizaciones: ${cantidadesClientes[item.dataIndex]}`]
         }}},
         scales: { y: { ticks: { autoSkip: false } } },
         onClick: (evt, elements) => {
@@ -484,7 +483,7 @@ let nivelGeoActual = 'distrito';
 
 const chartLugares = new Chart(document.getElementById('chartLugares'), {
     type: 'bar',
-    data: { labels: datasetsGeo.distrito.labels, datasets: [{ label: 'S/', data: datasetsGeo.distrito.data, backgroundColor: paletaRojo, borderRadius: 4 }] },
+    data: { labels: datasetsGeo.distrito.labels, datasets: [{ label: '$', data: datasetsGeo.distrito.data, backgroundColor: paletaRojo, borderRadius: 4 }] },
     options: {
         indexAxis: 'y', responsive: true,
         plugins: { legend: { display: false } },
@@ -567,7 +566,7 @@ function abrirDetalleCliente(clienteId, nombreCliente) {
                     <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
                     <td>${i.fecha}</td>
                     <td class="text-center">${i.items}</td>
-                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? '$' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });
 }
@@ -581,7 +580,7 @@ function abrirDetalleLugar(tipo, valor) {
                     <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
                     <td>${i.fecha}</td>
                     <td>${i.cliente}</td>
-                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? '$' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });
 }
@@ -614,30 +613,69 @@ new Chart(document.getElementById('chartPerdidaMes'), {
     }
 });
 
-// MEJORA 4: dona delgada (cutout 65%)
+// --- GRÁFICO PRINCIPAL: PÉRDIDAS POR CATEGORÍA (barra horizontal, ordenada, clic -> drill-down) ---
+const labelsCategoriaPerdida = {{ labels_categoria_perdida | tojson }};
+const pctCategoriaPerdida = {{ pct_categoria_perdida | tojson }};
+
 new Chart(document.getElementById('chartCategoriaPerdida'), {
-    type: 'doughnut',
+    type: 'bar',
     data: {
-        labels: {{ labels_categoria_perdida | tojson }},
-        datasets: [{ data: {{ data_categoria_perdida | tojson }}, backgroundColor: [paletaRojo, paletaAmbar, paletaMorado, paletaAzul, '#6c757d', paletaVerde] }]
+        labels: labelsCategoriaPerdida,
+        datasets: [{ label: '$ perdido', data: {{ data_categoria_perdida | tojson }}, backgroundColor: paletaRojo, borderRadius: 4 }]
     },
     options: {
-        responsive: true,
-        cutout: '65%',
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
         plugins: {
-            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+            legend: { display: false },
             tooltip: { callbacks: {
-                label: (item) => ` S/ ${item.formattedValue} (${qtyCategoriaPerdida[item.dataIndex]} casos)`
+                label: (item) => [`Perdido: $ ${item.formattedValue}`, `Casos: ${qtyCategoriaPerdida[item.dataIndex]}`, `${pctCategoriaPerdida[item.dataIndex]}% del total`]
             }}
+        },
+        scales: { y: { ticks: { autoSkip: false } } },
+        onClick: (evt, elements) => {
+            if (!elements.length) return;
+            abrirDetallePerdidaCategoria(labelsCategoriaPerdida[elements[0].index]);
         }
     }
 });
+
+// --- Dona secundaria: mismo dato, otra forma de verlo ---
+new Chart(document.getElementById('chartCategoriaDona'), {
+    type: 'doughnut',
+    data: {
+        labels: labelsCategoriaPerdida,
+        datasets: [{ data: {{ data_categoria_perdida | tojson }}, backgroundColor: [paletaRojo, paletaAmbar, paletaMorado, paletaAzul, '#6c757d', paletaVerde] }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false, cutout: '65%',
+        plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+            tooltip: { callbacks: { label: (item) => ` $ ${item.formattedValue} (${qtyCategoriaPerdida[item.dataIndex]} casos)` } }
+        }
+    }
+});
+
+function abrirDetallePerdidaCategoria(categoria) {
+    abrirModalDetalle(`Pérdidas en categoría: ${categoria}`);
+    fetch(`/api/dashboard_vendedor/detalle_perdida_categoria?categoria=${encodeURIComponent(categoria)}&fecha_inicio=${fechaInicio}&fecha_fin=${fechaFin}`)
+        .then(r => r.json()).then(res => {
+            mostrarResultadoDetalle(res.items, ['N° COT', 'Fecha', 'Cliente', 'Estado', 'Motivo', 'Monto'], i => `
+                <tr>
+                    <td class="ps-3 fw-bold text-primary">${i.order_id}</td>
+                    <td>${i.fecha}</td>
+                    <td>${i.cliente}</td>
+                    <td><span class="badge bg-danger">${i.estado}</span></td>
+                    <td class="small">${i.motivo}</td>
+                    <td class="text-end fw-bold">$ ${i.total.toFixed(2)}</td>
+                </tr>`);
+        });
+}
 
 new Chart(document.getElementById('chartMotivosPerdida'), {
     type: 'bar',
     data: {
         labels: {{ labels_motivos_perdida | tojson }},
-        datasets: [{ label: 'S/ perdido', data: {{ data_motivos_perdida | tojson }}, backgroundColor: tipoMotivosPerdida.map(t => coloresPorTipo[t] || '#6c757d'), borderRadius: 4 }]
+        datasets: [{ label: '$ perdido', data: {{ data_motivos_perdida | tojson }}, backgroundColor: tipoMotivosPerdida.map(t => coloresPorTipo[t] || '#6c757d'), borderRadius: 4 }]
     },
     options: {
         indexAxis: 'y', responsive: true,
@@ -645,7 +683,7 @@ new Chart(document.getElementById('chartMotivosPerdida'), {
             legend: { display: false },
             tooltip: { callbacks: {
                 title: (items) => motivosPerdidaFull[items[0].dataIndex],
-                label: (item) => [`Tipo: ${tipoMotivosPerdida[item.dataIndex]}`, `Perdido: S/ ${item.formattedValue}`, `Casos: ${qtyMotivosPerdida[item.dataIndex]}`]
+                label: (item) => [`Tipo: ${tipoMotivosPerdida[item.dataIndex]}`, `Perdido: $ ${item.formattedValue}`, `Casos: ${qtyMotivosPerdida[item.dataIndex]}`]
             }}
         },
         scales: { y: { ticks: { autoSkip: false } } },
@@ -658,12 +696,12 @@ new Chart(document.getElementById('chartMotivosPerdida'), {
 
 new Chart(document.getElementById('chartClientesPerdida'), {
     type: 'bar',
-    data: { labels: {{ clientes_perdida_labels | tojson }}, datasets: [{ label: 'S/ perdido', data: {{ clientes_perdida_data | tojson }}, backgroundColor: paletaRojo, borderRadius: 4 }] },
+    data: { labels: {{ clientes_perdida_labels | tojson }}, datasets: [{ label: '$ perdido', data: {{ clientes_perdida_data | tojson }}, backgroundColor: paletaRojo, borderRadius: 4 }] },
     options: {
-        indexAxis: 'y', responsive: true,
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: { callbacks: {
             title: (items) => clientesPerdidaFull[items[0].dataIndex],
-            label: (item) => [`Perdido: S/ ${item.formattedValue}`, `Casos: ${clientesPerdidaQty[item.dataIndex]}`]
+            label: (item) => [`Perdido: $ ${item.formattedValue}`, `Casos: ${clientesPerdidaQty[item.dataIndex]}`]
         }}},
         scales: { y: { ticks: { autoSkip: false } } },
         onClick: (evt, elements) => {
@@ -684,7 +722,7 @@ function abrirDetallePerdida(motivo) {
                     <td>${i.fecha}</td>
                     <td>${i.cliente}</td>
                     <td><span class="badge bg-danger">${i.estado}</span></td>
-                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? '$' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });
 }
@@ -699,7 +737,7 @@ function abrirDetallePerdidaCliente(nombreCliente, clienteId) {
                     <td>${i.fecha}</td>
                     <td><span class="badge bg-danger">${i.estado}</span></td>
                     <td class="small">${i.motivo}</td>
-                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? 'S/' : '$'} ${i.total.toFixed(2)}</td>
+                    <td class="text-end fw-bold">${i.moneda === 'PEN' ? '$' : '$'} ${i.total.toFixed(2)}</td>
                 </tr>`);
         });
 }
