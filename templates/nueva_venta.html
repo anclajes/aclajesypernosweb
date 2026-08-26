@@ -408,6 +408,12 @@
                             </select>
                         </div>
                         <div class="col-12 col-md-4">
+                            <label class="small text-muted mb-1 fw-bold">2. Calidad</label>
+                            <select class="form-select form-select-sm shadow-sm border-secondary" id="filtroCalidadVenta" disabled onchange="window.cargarProductos()">
+                                <option value="">-- Espere familia --</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-4">
                             <label class="small text-muted mb-1 fw-bold" style="color: var(--theme-primary) !important;">3. Buscar Producto</label>
                             <select class="form-select shadow-sm" id="productoSelect" style="width: 100%;">
                                 <option value="" disabled selected>Escriba para buscar...</option>
@@ -2402,6 +2408,20 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         
         unidadMedida = 'UND'; 
 
+                // NUEVO: BLOQUEO DE MEZCLA DE INVENTARIOS
+        const origenNuevo = opt.data('origen') || 'ANCLAJES';
+        const bloqueado = obtenerInventarioBloqueado();
+        if (bloqueado && bloqueado !== origenNuevo) {
+            return Swal.fire({
+                icon: 'error',
+                title: 'No se puede mezclar inventarios',
+                html: `Ya agregaste productos de <b>${nombreInventario(bloqueado)}</b> a esta cotización.<br><br>
+                       Debes completar la venta con un solo inventario. Si necesitas usar <b>${nombreInventario(origenNuevo)}</b>, 
+                       primero elimina los productos de ${nombreInventario(bloqueado)} de la lista (icono <i class="bi bi-trash"></i>).`,
+                confirmButtonText: 'Entendido'
+            });
+        }
+
         if (cant > stockProd) { 
             Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 }).fire({ icon: 'warning', title: '⚠️ Atención: Cantidad supera el Stock disponible' }); 
         }
@@ -3077,15 +3097,6 @@ function buscarClienteApi(force = false) {
 
 
     function renderizarTabla() {
-
-    let badgeOrigen = '';
-    if (item.tipo === 'PRODUCTO') {
-        badgeOrigen = (item.origen_inventario === 'IMPORTBOLTS')
-            ? '<span class="badge" style="background:#004b87; font-size:0.6rem;">IB</span>'
-            : '<span class="badge" style="background:#0B3D91; font-size:0.6rem;">ANC</span>';
-    }
-    const tbody = $('#tablaCarrito'); 
-    tbody.empty();
     
     let moneda = $('#selectMoneda').val(); 
     let simbolo = (moneda === 'PEN') ? 'S/' : '$';
@@ -3114,6 +3125,14 @@ function buscarClienteApi(force = false) {
             etiquetaTipo = '<span class="badge bg-info text-dark ms-1" style="font-size:0.6rem">KIT</span>'; 
             let colorOjo = (claseStock !== '') ? 'btn-danger' : 'btn-outline-info';
             botonVer = `<button class="btn btn-sm ${colorOjo} me-1" onclick="verComponentes(${index})" title="Ver contenido"><i class="bi bi-eye-fill"></i></button>`;
+        }
+
+          // NUEVO: badge de origen (solo para PRODUCTO, que es lo que sí distingue inventario)
+        let badgeOrigen = '';
+        if (item.tipo === 'PRODUCTO') {
+            badgeOrigen = (item.origen_inventario === 'IMPORTBOLTS')
+                ? '<span class="badge ms-1" style="background:#004b87; font-size:0.6rem;">IB</span>'
+                : '<span class="badge ms-1" style="background:#0B3D91; font-size:0.6rem;">ANC</span>';
         }
 
         // --- 1. CONSTRUCCIÓN SEGURA DEL NOMBRE Y ESTADO ---
@@ -3145,7 +3164,7 @@ function buscarClienteApi(force = false) {
             <tr id="fila-${index}">
                 <td class="ps-3">
                     <div class="product-name-cell" style="font-size: 0.85rem;">
-                        ${nombreHtml} ${etiquetaTipo} ${badgeDescHtml}
+                        ${nombreHtml} ${etiquetaTipo} ${badgeOrigen} ${badgeDescHtml}
                     </div>
                     <div class="small text-muted fw-light">${item.sku}</div>
                     <span id="badge_stock_${index}" class="badge bg-danger ms-1" style="font-size:0.6rem; display:${badgeDisplay};">
@@ -3189,6 +3208,7 @@ function buscarClienteApi(force = false) {
     });
 
     actualizarTotalesGlobales();
+    actualizarLockVisualInventario();
     
     const tcActual = parseFloat($('#inputTC').val()) || 0;
     if(moneda === 'PEN') {
@@ -4497,6 +4517,23 @@ const categoriasImportBolts = [
 ];
 
 window.cambiarInventario = function(inv) {
+    const bloqueado = obtenerInventarioBloqueado();
+
+    if (bloqueado && bloqueado !== inv) {
+        // Revertimos visualmente el radio al que SÍ está permitido
+        document.getElementById(bloqueado === 'IMPORTBOLTS' ? 'invImportBolts' : 'invAnclajes').checked = true;
+
+        Swal.fire({
+            icon: 'warning',
+            title: 'Inventario bloqueado',
+            html: `Esta cotización ya tiene productos de <b>${nombreInventario(bloqueado)}</b>.<br><br>
+                   No se pueden mezclar inventarios en una misma cotización. 
+                   Si necesitas usar <b>${nombreInventario(inv)}</b>, primero elimina los productos actuales de la lista.`,
+            confirmButtonText: 'Entendido'
+        });
+        return;
+    }
+
     inventarioActivo = inv;
     const selectFamilia = document.getElementById('filtroFamiliaVenta');
     const lista = (inv === 'IMPORTBOLTS') ? categoriasImportBolts : categoriasAnclajes;
@@ -4510,7 +4547,6 @@ window.cambiarInventario = function(inv) {
         selectFamilia.appendChild(opt);
     });
 
-    // Reset de calidad y producto
     $('#filtroCalidadVenta').html('<option value="">-- Espere familia --</option>').prop('disabled', true);
     $('#productoSelect').empty().trigger('change');
     $('#info_stock').val('');
@@ -5149,6 +5185,44 @@ function verHistorialContactos(ruc) {
             html += '</div>';
             cont.innerHTML = html;
         });
+}
+
+function obtenerInventarioBloqueado() {
+    const itemProducto = carrito.find(item => item.tipo === 'PRODUCTO');
+    return itemProducto ? itemProducto.origen_inventario : null;
+}
+
+function nombreInventario(origen) {
+    return origen === 'IMPORTBOLTS' ? 'Import Bolts' : 'Anclajes';
+}
+
+function actualizarLockVisualInventario() {
+    const bloqueado = obtenerInventarioBloqueado();
+    const radioAnclajes = document.getElementById('invAnclajes');
+    const radioImportBolts = document.getElementById('invImportBolts');
+    const labelAnclajes = document.querySelector('label[for="invAnclajes"]');
+    const labelImportBolts = document.querySelector('label[for="invImportBolts"]');
+
+    if (bloqueado === 'ANCLAJES') {
+        radioImportBolts.disabled = true;
+        labelImportBolts.classList.add('opacity-50');
+        labelImportBolts.title = 'Bloqueado: ya hay productos de Anclajes en el carrito';
+        labelAnclajes.classList.remove('opacity-50');
+        radioAnclajes.disabled = false;
+    } else if (bloqueado === 'IMPORTBOLTS') {
+        radioAnclajes.disabled = true;
+        labelAnclajes.classList.add('opacity-50');
+        labelAnclajes.title = 'Bloqueado: ya hay productos de Import Bolts en el carrito';
+        labelImportBolts.classList.remove('opacity-50');
+        radioImportBolts.disabled = false;
+    } else {
+        radioAnclajes.disabled = false;
+        radioImportBolts.disabled = false;
+        labelAnclajes.classList.remove('opacity-50');
+        labelImportBolts.classList.remove('opacity-50');
+        labelAnclajes.title = '';
+        labelImportBolts.title = '';
+    }
 }
 
 </script>
