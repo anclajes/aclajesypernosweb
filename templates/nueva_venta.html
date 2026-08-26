@@ -3097,6 +3097,9 @@ function buscarClienteApi(force = false) {
 
 
     function renderizarTabla() {
+
+    const tbody = $('#tablaCarrito'); 
+    tbody.empty();
     
     let moneda = $('#selectMoneda').val(); 
     let simbolo = (moneda === 'PEN') ? 'S/' : '$';
