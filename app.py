@@ -34,7 +34,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from xhtml2pdf import pisa
 
 
+def get_producto_detalle(detalle):
+    return detalle.product_importbolts if detalle.origen_inventario == 'IMPORTBOLTS' else detalle.product
 
+def get_modelo_stock(origen):
+    return ProductImportBolts if origen == 'IMPORTBOLTS' else Product
+
+def get_modelo_kardex(origen):
+    return ProductMovementImportBolts if origen == 'IMPORTBOLTS' else ProductMovement
 
 def sumar_dias_habiles(fecha_inicio, dias):
     if not fecha_inicio or not dias: 
@@ -1846,6 +1853,32 @@ def get_productos_por_categoria(category_id):
         print(f"API Error: {e}")
         return {'productos': []}
 
+@app.route('/api/productos_por_categoria_importbolts/<int:category_id>')
+def get_productos_por_categoria_importbolts(category_id):
+    try:
+        if category_id == 0:
+            productos = ProductImportBolts.query.limit(500).all()
+        else:
+            cat = CategoryImportBolts.query.get_or_404(category_id)
+            productos = ProductImportBolts.query.filter(ProductImportBolts.categoria == cat.nombre).all()
+
+        lista = []
+        for p in productos:
+            lista.append({
+                'id': p.id,
+                'sku': p.sku,
+                'nombre': p.nombre,
+                'stock': p.stock_actual,
+                'p_unidad': p.precio_unidad,
+                'calidad': p.calidad,
+                'estado': p.estado if p.estado else ''
+            })
+        return {'productos': lista}
+
+    except Exception as e:
+        print(f"API Error ImportBolts: {e}")
+        return {'productos': []}
+
 # --- GESTIÓN DE USUARIOS (ADMIN) ---
 
 @app.route('/usuarios')
@@ -2281,20 +2314,20 @@ def nueva_venta():
 # --- MÉTODO GET (MOSTRAR PANTALLA DE NUEVA VENTA) ---
     productos = Product.query.all()
     categorias = Category.query.all()
+    categorias_importbolts = CategoryImportBolts.query.all()   # <-- NUEVO
     
     tc_hoy = obtener_tipo_cambio(usuario_solicitante="Sistema Automático")
     config_tc = SystemConfig.query.get('tipo_cambio')
-    
-    # --- NUEVO: CONSULTA DE ÚLTIMA IMPORTACIÓN MASIVA ---
     info_importacion = SystemConfig.query.get('ultima_importacion')
     
     return render_template('nueva_venta.html', 
                            productos=productos, 
                            categorias=categorias, 
+                           categorias_importbolts=categorias_importbolts,   # <-- NUEVO
                            tc=tc_hoy,
                            updated_at=config_tc.updated_at.strftime('%d/%m %H:%M') if config_tc else None,
                            updated_by=config_tc.updated_by if config_tc else None,
-                           info_importacion=info_importacion) # <-- Pasado al HTML
+                           info_importacion=info_importacion)
 
 # --- EN APP.PY (Función DESCARGAR MAESTRA) ---
 from xhtml2pdf import pisa
@@ -5845,11 +5878,23 @@ def fix_cliente_dueno_y_contactos():
         return f"<h2>❌ Error: {str(e)}</h2>"
 
 
-@app.route('/fix_auditoria_contactos')
-def fix_auditoria_contactos():
+@app.route('/fix_orderdetail_importbolts_fk')
+def fix_orderdetail_importbolts_fk():
     try:
-        db.create_all()  # crea client_contact_log y client_rubro_vendedor
-        return "<h2>✅ Tablas de auditoría de contactos y rubro por vendedor creadas.</h2>"
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            try:
+                conn.execute(text('ALTER TABLE order_detail ADD COLUMN product_id_importbolts INTEGER'))
+            except Exception as e:
+                print(f"Aviso product_id_importbolts: {e}")
+            try:
+                conn.execute(text("ALTER TABLE order_detail ADD COLUMN origen_inventario VARCHAR(20) DEFAULT 'ANCLAJES'"))
+            except Exception as e:
+                print(f"Aviso origen_inventario: {e}")
+            try:
+                conn.execute(text('ALTER TABLE order_detail ADD CONSTRAINT fk_orderdetail_importbolts FOREIGN KEY (product_id_importbolts) REFERENCES product_importbolts(id)'))
+            except Exception as e:
+                print(f"Aviso constraint: {e}")
+        return "<h2>✅ order_detail actualizado: soporta ahora ambos inventarios sin romper lo existente.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
 

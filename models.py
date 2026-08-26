@@ -261,6 +261,10 @@ class OrderDetail(db.Model):
     
     # Puede ser NULL si es Fabricación o GLB puro
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=True)
+
+    origen_inventario = db.Column(db.String(20), default='ANCLAJES')  # 'ANCLAJES' o 'IMPORTBOLTS'
+    product_id_importbolts = db.Column(db.Integer, db.ForeignKey('product_importbolts.id'), nullable=True)
+    product_importbolts = db.relationship('ProductImportBolts')
     
     # Nuevos campos para manejar tipos
     item_type = db.Column(db.String(20), default='PRODUCTO') # PRODUCTO, FABRICACION, GLB

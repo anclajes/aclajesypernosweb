@@ -383,18 +383,28 @@
 
             <div class="card-body bg-light">
                 <div id="panelProducto">
+                    <!-- NUEVO: SELECTOR DE INVENTARIO -->
+                    <div class="mb-2">
+                        <label class="small text-muted mb-1 fw-bold">Inventario de Origen</label>
+                        <div class="btn-group w-100 shadow-sm" role="group">
+                            <input type="radio" class="btn-check" name="inventarioOption" id="invAnclajes" checked onclick="cambiarInventario('ANCLAJES')">
+                            <label class="btn btn-outline-primary fw-bold" for="invAnclajes" style="border-color:#0B3D91; color:#0B3D91;">
+                                <i class="bi bi-building"></i> Anclajes
+                            </label>
+
+                            <input type="radio" class="btn-check" name="inventarioOption" id="invImportBolts" onclick="cambiarInventario('IMPORTBOLTS')">
+                            <label class="btn btn-outline-success fw-bold" for="invImportBolts" style="border-color:#004b87; color:#004b87;">
+                                <i class="bi bi-globe-americas"></i> Import Bolts
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="row g-2 mb-2">
                         <div class="col-12 col-md-4">
                             <label class="small text-muted mb-1 fw-bold">1. Familia</label>
                             <select class="form-select form-select-sm shadow-sm border-secondary" id="filtroFamiliaVenta" onchange="window.cargarCalidadesVenta()">
                                 <option value="" selected>-- Seleccione --</option>
                                 {% for c in categorias %} <option value="{{ c.id }}" data-nombre="{{ c.nombre }}">{{ c.nombre }}</option> {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="small text-muted mb-1 fw-bold">2. Calidad</label>
-                            <select class="form-select form-select-sm shadow-sm border-secondary" id="filtroCalidadVenta" disabled onchange="window.cargarProductos()">
-                                <option value="">-- Espere familia --</option>
                             </select>
                         </div>
                         <div class="col-12 col-md-4">
@@ -2396,7 +2406,9 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
             Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 4000 }).fire({ icon: 'warning', title: '⚠️ Atención: Cantidad supera el Stock disponible' }); 
         }
         
-        let itemExistente = carrito.find(item => item.id === idProd && item.tipo === 'PRODUCTO');
+        let itemExistente = carrito.find(item => 
+            item.id === idProd && item.tipo === 'PRODUCTO' && item.origen_inventario === (opt.data('origen') || 'ANCLAJES')
+        );
         
         /* --- REEMPLAZA LA PARTE DONDE SE CREA EL OBJETO EN EL CASO A --- */
         if (itemExistente) { 
@@ -2414,15 +2426,14 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 estado: estadoProd, 
                 stock: stockProd, 
                 cantidad: cant, 
-                // --- AQUÍ ESTÁ LA MEJORA CLAVE ---
-                precioBase: precioBaseCatalogo, // ✅ SIEMPRE el precio de catálogo en USD
+                precioBase: precioBaseCatalogo,
                 precio_catalogo_sistema: (moneda === 'PEN') ? (precioBaseCatalogo * tc) : precioBaseCatalogo,
-                precio: precio, // El precio final que digitó el usuario
-                // ----------------------------------
+                precio: precio, 
                 subtotal: parseFloat((cant * precio).toFixed(2)), 
                 tipo_precio: (precio !== ((moneda === 'PEN') ? (precioBase * tc) : precioBase)) ? 'Modificado' : 'Oficial', 
                 tipo: 'PRODUCTO',
                 um: unidadMedida,
+                origen_inventario: opt.data('origen') || 'ANCLAJES',   // <-- NUEVO
                 desc_tipo: '', 
                 desc_valor: 0, 
                 desc_label: ''
@@ -3066,6 +3077,13 @@ function buscarClienteApi(force = false) {
 
 
     function renderizarTabla() {
+
+    let badgeOrigen = '';
+    if (item.tipo === 'PRODUCTO') {
+        badgeOrigen = (item.origen_inventario === 'IMPORTBOLTS')
+            ? '<span class="badge" style="background:#004b87; font-size:0.6rem;">IB</span>'
+            : '<span class="badge" style="background:#0B3D91; font-size:0.6rem;">ANC</span>';
+    }
     const tbody = $('#tablaCarrito'); 
     tbody.empty();
     
@@ -4448,47 +4466,88 @@ function mostrarModalResumen() {
     }
 
 
-    function cargarCalidadesVenta() {
+function cargarCalidadesVenta() {
+    const famNombre = $('#filtroFamiliaVenta option:selected').data('nombre');
+    const selCal = document.getElementById('filtroCalidadVenta');
+    selCal.innerHTML = '<option>Cargando...</option>'; selCal.disabled = true; $('#productoSelect').empty();
+    if(!famNombre) { selCal.innerHTML = '<option value="">-- Espere --</option>'; return; }
 
-        const famNombre = $('#filtroFamiliaVenta option:selected').data('nombre');
+    let fd = new FormData(); fd.append('familia', famNombre);
+    let urlCalidades = (inventarioActivo === 'IMPORTBOLTS') 
+        ? '/api/calidades_de_familia_importbolts' 
+        : '/api/calidades_de_familia';
 
-        const selCal = document.getElementById('filtroCalidadVenta'); selCal.innerHTML = '<option>Cargando...</option>'; selCal.disabled = true; $('#productoSelect').empty();
+    fetch(urlCalidades, { method: 'POST', body: fd }).then(r => r.json()).then(data => {
+        selCal.innerHTML = '<option value="">-- Todas --</option>';
+        if(data.status === 'success') { 
+            data.calidades.forEach(c => { let opt = document.createElement('option'); opt.value = c; opt.text = c; selCal.appendChild(opt); }); 
+            selCal.disabled = false; 
+        }
+        cargarProductos();
+    });
+}
 
-        if(!famNombre) { selCal.innerHTML = '<option value="">-- Espere --</option>'; return; }
+let inventarioActivo = 'ANCLAJES'; // Variable global de control
 
-        let fd = new FormData(); fd.append('familia', famNombre);
+const categoriasAnclajes = [
+    {% for c in categorias %} { id: "{{ c.id }}", nombre: "{{ c.nombre }}" }, {% endfor %}
+];
+const categoriasImportBolts = [
+    {% for c in categorias_importbolts %} { id: "{{ c.id }}", nombre: "{{ c.nombre }}" }, {% endfor %}
+];
 
-        fetch('/api/calidades_de_familia', { method: 'POST', body: fd }).then(r => r.json()).then(data => {
+window.cambiarInventario = function(inv) {
+    inventarioActivo = inv;
+    const selectFamilia = document.getElementById('filtroFamiliaVenta');
+    const lista = (inv === 'IMPORTBOLTS') ? categoriasImportBolts : categoriasAnclajes;
 
-            selCal.innerHTML = '<option value="">-- Todas --</option>';
+    selectFamilia.innerHTML = '<option value="" selected>-- Seleccione --</option>';
+    lista.forEach(c => {
+        let opt = document.createElement('option');
+        opt.value = c.id;
+        opt.setAttribute('data-nombre', c.nombre);
+        opt.text = c.nombre;
+        selectFamilia.appendChild(opt);
+    });
 
-            if(data.status === 'success') { data.calidades.forEach(c => { let opt = document.createElement('option'); opt.value = c; opt.text = c; selCal.appendChild(opt); }); selCal.disabled = false; }
-
-            cargarProductos();
-
-        });
-
-    }
+    // Reset de calidad y producto
+    $('#filtroCalidadVenta').html('<option value="">-- Espere familia --</option>').prop('disabled', true);
+    $('#productoSelect').empty().trigger('change');
+    $('#info_stock').val('');
+    document.getElementById('btnAgregar').disabled = true;
+}
 
 
 
 function cargarProductos() {
-        const catId = $('#filtroFamiliaVenta').val(); const calFiltro = $('#filtroCalidadVenta').val();
-        const select = $('#productoSelect'); select.empty().append(new Option('Cargando...', '', false, false));
-        let url = catId ? `/api/productos_por_categoria/${catId}` : `/api/productos_por_categoria/0`; 
-        fetch(url).then(r => r.json()).then(data => {
-            select.empty().append(new Option('', '', true, true)); 
-            let lista = data.productos; if(calFiltro) lista = lista.filter(p => p.calidad === calFiltro);
-            if(lista.length === 0) select.empty().append(new Option('-- Vacío --', '', false, false));
-            else lista.forEach(p => { 
-                const o = new Option(p.nombre, p.id, false, false); 
-                // --- CAMBIO AQUÍ: Agregamos data-estado para que el Select2 lo pueda pintar ---
-                $(o).attr({ 'data-sku': p.sku, 'data-stock': p.stock, 'data-punit': p.p_unidad, 'data-estado': p.estado || '' }); 
-                select.append(o); 
-            });
-            select.val(null).trigger('change');
+    const catId = $('#filtroFamiliaVenta').val(); 
+    const calFiltro = $('#filtroCalidadVenta').val();
+    const select = $('#productoSelect'); 
+    select.empty().append(new Option('Cargando...', '', false, false));
+
+    let url = (inventarioActivo === 'IMPORTBOLTS')
+        ? (catId ? `/api/productos_por_categoria_importbolts/${catId}` : `/api/productos_por_categoria_importbolts/0`)
+        : (catId ? `/api/productos_por_categoria/${catId}` : `/api/productos_por_categoria/0`);
+
+    fetch(url).then(r => r.json()).then(data => {
+        select.empty().append(new Option('', '', true, true)); 
+        let lista = data.productos; 
+        if(calFiltro) lista = lista.filter(p => p.calidad === calFiltro);
+        if(lista.length === 0) select.empty().append(new Option('-- Vacío --', '', false, false));
+        else lista.forEach(p => { 
+            const o = new Option(p.nombre, p.id, false, false); 
+            $(o).attr({ 
+                'data-sku': p.sku, 
+                'data-stock': p.stock, 
+                'data-punit': p.p_unidad, 
+                'data-estado': p.estado || '',
+                'data-origen': inventarioActivo   // <-- CLAVE: marcamos el origen en el propio option
+            }); 
+            select.append(o); 
         });
-    }
+        select.val(null).trigger('change');
+    });
+}
 
 
 
