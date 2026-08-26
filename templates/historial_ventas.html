@@ -166,6 +166,17 @@
                                 {% endif %}
                                 {{ "%05d"|format(o.id) }}
                             </div>
+                            <div class="mt-1">
+                                {% if o.origen_inventario == 'IMPORTBOLTS' %}
+                                    <span class="badge text-white" style="background-color:#004b87; font-size:0.62rem;">
+                                        <i class="bi bi-globe-americas"></i> IMPORT BOLTS
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-white" style="background-color:#0B3D91; font-size:0.62rem;">
+                                        <i class="bi bi-building"></i> ANCLAJES
+                                    </span>
+                                {% endif %}
+                            </div>
                             <div class="text-muted mt-1" style="font-size: 0.7rem;" title="Cantidad de productos distintos">
                                 <i class="bi bi-box-seam"></i> {{ o.details|length }} Ítem(s)
                             </div>

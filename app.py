@@ -2173,11 +2173,19 @@ def nueva_venta():
             igv_final = round(subtotal_neto_final * 0.18, 2)
             total_final = round(subtotal_neto_final + igv_final, 2)
 
+            origen_cotizacion = 'ANCLAJES'
+            for item in data['items']:
+                if item.get('tipo') == 'PRODUCTO':
+                    origen_cotizacion = item.get('origen_inventario', 'ANCLAJES')
+                    break
+
             # 3. CREAR LA ORDEN (CABECERA) CON VALORES SEGUROS
             nueva_orden = Order(
                 cliente_id=cliente.id, 
                 vendedor_id=session['user_id'], 
                 fecha=hora_peru(),
+
+                origen_inventario=origen_cotizacion,
                 
                 # USAMOS LOS VALORES CALCULADOS EN BACKEND
                 subtotal=subtotal_neto_final,
@@ -2220,6 +2228,7 @@ def nueva_venta():
             # 4. GUARDAR DETALLES (Items)
             for item in data['items']:
                 tipo_item = item.get('tipo', 'PRODUCTO') 
+                origen_item = item.get('origen_inventario', 'ANCLAJES')  # <-- NUEVO
                 
                 # ==========================================================
                 # ---> NUEVO: CAPTURAR EL PRECIO ORIGINAL DEL SISTEMA <---
@@ -2227,13 +2236,15 @@ def nueva_venta():
                 precio_original_seguro = 0.0
                 prod_db_temp = None
                 
-                # Buscamos el producto en la BD (Mantenemos esto por si necesitas el ID)
+                # Buscamos el producto en la BD (según el inventario correcto)
+                ModeloProducto = get_modelo_stock(origen_item)  # <-- NUEVO: Product o ProductImportBolts
+                
                 if tipo_item == 'PRODUCTO':
-                    prod_db_temp = Product.query.get(item['id'])
+                    prod_db_temp = ModeloProducto.query.get(item['id'])
                 elif tipo_item == 'FABRICACION':
                     sku_buscado = item.get('sku')
                     if sku_buscado:
-                        prod_db_temp = Product.query.filter_by(sku=sku_buscado).first()
+                        prod_db_temp = Product.query.filter_by(sku=sku_buscado).first()  # FABRICACION siempre Anclajes
                         
                 # Si el producto existe, capturamos su precio base como "Plan B"
                 if prod_db_temp and prod_db_temp.precio_unidad:
@@ -2247,6 +2258,7 @@ def nueva_venta():
                 detalle = OrderDetail(
                     order_id=nueva_orden.id,
                     item_type=tipo_item, 
+                    origen_inventario=origen_item,   # <-- NUEVO
                     cantidad=int(item['cantidad']),
                     
                     # 1. Usamos el precio final exacto que mandó el frontend (o caemos al 'precio' normal por seguridad)
@@ -2265,19 +2277,22 @@ def nueva_venta():
                     desc_label=item.get('desc_label', '')
                 )
 
-                # --- VINCULACIÓN DE PRODUCTOS/SERVICIOS ---
+                # --- VINCULACIÓN DE PRODUCTOS/SERVICIOS (AHORA SEPARADA POR INVENTARIO) ---
                 if tipo_item == 'PRODUCTO':
-                    detalle.product_id = item['id']
+                    if origen_item == 'IMPORTBOLTS':
+                        detalle.product_id_importbolts = item['id']   # <-- FK correcto
+                    else:
+                        detalle.product_id = item['id']
                 
                 elif tipo_item == 'FABRICACION':
-                    if prod_db_temp: # Usamos la variable que ya buscamos arriba
+                    if prod_db_temp: # FABRICACION siempre es Anclajes
                         detalle.product_id = prod_db_temp.id 
                     
                     # Guardamos los textos
                     detalle.nombre_personalizado = item.get('descripcion_glb', item['nombre'])
                     detalle.nombre_personalizado_titulo = item.get('titulo_glb', '')
 
-                else: # GLB
+                else: # GLB (siempre Anclajes, según lo acordado)
                     detalle.nombre_personalizado = item.get('descripcion_glb', item['nombre'])
                     detalle.nombre_personalizado_titulo = item.get('titulo_glb', '')
 
@@ -4620,17 +4635,24 @@ def actualizar_venta():
         # 4. ACTUALIZAR ITEMS (Estrategia: Borrar viejos y crear nuevos)
         OrderDetail.query.filter_by(order_id=orden.id).delete()
         
+                # Detectar origen general (para actualizar también la cabecera)
+        origen_cotizacion = 'ANCLAJES'
+        for item in data['items']:
+            if item.get('tipo') == 'PRODUCTO':
+                origen_cotizacion = item.get('origen_inventario', 'ANCLAJES')
+                break
+        orden.origen_inventario = origen_cotizacion   # <-- NUEVO
+
         for item in data['items']:
             tipo_item = item.get('tipo', 'PRODUCTO')
+            origen_item = item.get('origen_inventario', 'ANCLAJES')  # <-- NUEVO
             
-            # ==========================================================
-            # ---> NUEVO: CAPTURAR EL PRECIO ORIGINAL DEL SISTEMA <---
-            # ==========================================================
             precio_original_seguro = 0.0
             prod_db_temp = None
+            ModeloProducto = get_modelo_stock(origen_item)  # <-- NUEVO
             
             if tipo_item == 'PRODUCTO':
-                prod_db_temp = Product.query.get(item['id'])
+                prod_db_temp = ModeloProducto.query.get(item['id'])
             elif tipo_item == 'FABRICACION':
                 sku_buscado = item.get('sku')
                 if sku_buscado:
@@ -5878,25 +5900,14 @@ def fix_cliente_dueno_y_contactos():
         return f"<h2>❌ Error: {str(e)}</h2>"
 
 
-@app.route('/fix_orderdetail_importbolts_fk')
-def fix_orderdetail_importbolts_fk():
+@app.route('/fix_order_origen_inventario')
+def fix_order_origen_inventario():
     try:
         with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            try:
-                conn.execute(text('ALTER TABLE order_detail ADD COLUMN product_id_importbolts INTEGER'))
-            except Exception as e:
-                print(f"Aviso product_id_importbolts: {e}")
-            try:
-                conn.execute(text("ALTER TABLE order_detail ADD COLUMN origen_inventario VARCHAR(20) DEFAULT 'ANCLAJES'"))
-            except Exception as e:
-                print(f"Aviso origen_inventario: {e}")
-            try:
-                conn.execute(text('ALTER TABLE order_detail ADD CONSTRAINT fk_orderdetail_importbolts FOREIGN KEY (product_id_importbolts) REFERENCES product_importbolts(id)'))
-            except Exception as e:
-                print(f"Aviso constraint: {e}")
-        return "<h2>✅ order_detail actualizado: soporta ahora ambos inventarios sin romper lo existente.</h2>"
+            conn.execute(text("ALTER TABLE \"order\" ADD COLUMN origen_inventario VARCHAR(20) DEFAULT 'ANCLAJES'"))
+        return "<h2>✅ Columna origen_inventario agregada a la tabla order.</h2>"
     except Exception as e:
-        return f"<h2>❌ Error: {str(e)}</h2>"
+        return f"<h2>Aviso: {str(e)}</h2>"
 
     
 # --- ARRANQUE DE LA APLICACIÓN ---

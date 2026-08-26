@@ -164,6 +164,8 @@ class Order(db.Model):
     # Aquí están los dos caminos a User:
     vendedor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     chofer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Nuevo
+
+    origen_inventario = db.Column(db.String(20), default='ANCLAJES')  # 'ANCLAJES' o 'IMPORTBOLTS'
     
     # --- ESTADOS Y DATOS GENERALES ---
     estado = db.Column(db.String(50), default='Pendiente')
