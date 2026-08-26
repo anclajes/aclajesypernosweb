@@ -1259,6 +1259,25 @@ window.aplicarDescuentoItem = function(index) {
 
         carrito = datosPreCargados;
         renderizarTabla(); 
+
+                // --- NUEVO: Sincronizar el selector de inventario con el origen real de la cotización ---
+        const origenOrden = "{{ orden.origen_inventario or 'ANCLAJES' }}";
+        inventarioActivo = origenOrden;
+        if (origenOrden === 'IMPORTBOLTS') {
+            document.getElementById('invImportBolts').checked = true;
+        } else {
+            document.getElementById('invAnclajes').checked = true;
+        }
+        const listaCatEdicion = (origenOrden === 'IMPORTBOLTS') ? categoriasImportBolts : categoriasAnclajes;
+        const selectFamiliaEdicion = document.getElementById('filtroFamiliaVenta');
+        selectFamiliaEdicion.innerHTML = '<option value="" selected>-- Seleccione --</option>';
+        listaCatEdicion.forEach(c => {
+            let opt = document.createElement('option');
+            opt.value = c.id;
+            opt.setAttribute('data-nombre', c.nombre);
+            opt.text = c.nombre;
+            selectFamiliaEdicion.appendChild(opt);
+        });
         
         // Cambiar botón a "Guardar Cambios"
         const btnGuardar = document.querySelector('button[onclick="window.previsualizarVenta()"]');

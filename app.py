@@ -4484,19 +4484,24 @@ def editar_venta(order_id):
     items_js = []
     
     for d in orden.details:
+        origen_d = getattr(d, 'origen_inventario', 'ANCLAJES') or 'ANCLAJES'
+        prod_obj = get_producto_detalle(d)  # Product o ProductImportBolts, según corresponda
+        id_correcto = d.product_id_importbolts if origen_d == 'IMPORTBOLTS' else d.product_id
+
         item = {
-            'id': d.product_id,
+            'id': id_correcto,
             'sku': 'GEN', 
-            'nombre': d.product.nombre if d.product else (d.nombre_personalizado or "Item"),
+            'nombre': prod_obj.nombre if prod_obj else (d.nombre_personalizado or "Item"),
             'tipo': d.item_type,
             'stock': 0, 
             'cantidad': d.cantidad,
             'precio': d.precio_aplicado,
             'subtotal': d.subtotal,
-            'um': getattr(d.product, 'unidad_medida', 'UND'),
+            'um': getattr(prod_obj, 'unidad_medida', 'UND'),
+            'origen_inventario': origen_d,   # <-- NUEVO: para que el carrito sepa de dónde viene
             
             # --- RECUPERACIÓN A PRUEBA DE FALLOS ---
-            'estado': d.product.estado if (d.product and hasattr(d.product, 'estado')) else '',
+            'estado': prod_obj.estado if (prod_obj and hasattr(prod_obj, 'estado')) else '',
             'precioBase': getattr(d, 'precio_base', d.precio_aplicado) or d.precio_aplicado,
             'desc_tipo': getattr(d, 'desc_tipo', ''),
             'desc_valor': getattr(d, 'desc_valor', 0.0) or 0.0,
@@ -4504,20 +4509,18 @@ def editar_venta(order_id):
         }
 
         # Datos específicos por tipo
-        if d.item_type == 'PRODUCTO' and d.product:
-            item['sku'] = d.product.sku
-            item['stock'] = d.product.stock_actual
-            
-            # --- CORRECCIÓN DEL ERROR 'unidad_medida' ---
-            # Usamos getattr para evitar que falle si la columna no existe en la BD
-            item['um'] = getattr(d.product, 'unidad_medida', 'UND')
+        if d.item_type == 'PRODUCTO' and prod_obj:
+            item['sku'] = prod_obj.sku
+            item['stock'] = prod_obj.stock_actual
+            item['um'] = getattr(prod_obj, 'unidad_medida', 'UND')
             
         elif d.item_type == 'FABRICACION':
-            item['sku'] = d.product.sku if d.product else 'SRV'
+            item['sku'] = prod_obj.sku if prod_obj else 'SRV'
             item['titulo_glb'] = d.nombre_personalizado_titulo
             item['descripcion_glb'] = d.nombre_personalizado
             item['stock'] = 9999
             item['um'] = 'SRV'
+            item['origen_inventario'] = 'ANCLAJES'  # FABRICACION siempre es Anclajes
 
         elif d.item_type == 'GLB':
             item['sku'] = 'KIT'
@@ -4525,7 +4528,7 @@ def editar_venta(order_id):
             item['descripcion_glb'] = d.nombre_personalizado
             item['stock'] = 9999
             item['um'] = 'GLB'
-            # Reconstruir componentes
+            item['origen_inventario'] = 'ANCLAJES'  # Kits siempre Anclajes
             comps = []
             for c in d.kit_components:
                 comps.append({
@@ -4549,6 +4552,7 @@ def editar_venta(order_id):
                            items_json=items_js, 
                            productos=productos,
                            categorias=categorias,
+                           categorias_importbolts=CategoryImportBolts.query.all(),   # <-- NUEVO
                            tc=orden.tipo_cambio, 
                            updated_at=config_tc.updated_at.strftime('%d/%m') if config_tc else None)
 
@@ -4657,7 +4661,7 @@ def actualizar_venta():
                 sku_buscado = item.get('sku')
                 if sku_buscado:
                     prod_db_temp = Product.query.filter_by(sku=sku_buscado).first()
-                    
+
             if prod_db_temp and prod_db_temp.precio_unidad:
                 try:
                     precio_original_seguro = float(prod_db_temp.precio_unidad)
@@ -4668,6 +4672,7 @@ def actualizar_venta():
             detalle = OrderDetail(
                 order_id=orden.id,
                 item_type=tipo_item,
+                origen_inventario=origen_item,   # <-- NUEVO
                 cantidad=int(item['cantidad']),
                 precio_aplicado=float(item['precio']),
                 
@@ -4685,7 +4690,10 @@ def actualizar_venta():
             )
             
             if tipo_item == 'PRODUCTO':
-                detalle.product_id = item['id']
+                if origen_item == 'IMPORTBOLTS':
+                    detalle.product_id_importbolts = item['id']   # <-- FK correcto
+                else:
+                    detalle.product_id = item['id']
             elif tipo_item in ['FABRICACION', 'GLB']:
                  if tipo_item == 'FABRICACION' and prod_db_temp:
                      detalle.product_id = prod_db_temp.id
@@ -4725,14 +4733,15 @@ def obtener_detalle_venta(order_id):
         # 2. Procesar Items (Productos y Kits)
         items_data = []
         for d in orden.details:
+            origen_d = getattr(d, 'origen_inventario', 'ANCLAJES') or 'ANCLAJES'
+            prod_obj = get_producto_detalle(d)
+            
             sku_mostrado = "GEN"
             nombre_mostrado = d.nombre_personalizado or "Item sin nombre"
 
-            # Si está vinculado a un producto real
-            if d.product:
-                sku_mostrado = d.product.sku
-                nombre_mostrado = d.product.nombre
-            # Si es Fabricación o Kit (GLB)
+            if prod_obj:
+                sku_mostrado = prod_obj.sku
+                nombre_mostrado = prod_obj.nombre
             elif d.item_type in ['FABRICACION', 'GLB']:
                 titulo = d.nombre_personalizado_titulo or ""
                 cuerpo = d.nombre_personalizado or ""
@@ -4740,11 +4749,9 @@ def obtener_detalle_venta(order_id):
                 if d.item_type == 'FABRICACION': sku_mostrado = "SRV"
                 if d.item_type == 'GLB': sku_mostrado = "KIT"
 
-            # Lógica de Componentes (Si es un Kit)
             comps_data = []
             if d.item_type == 'GLB':
                 for c in d.kit_components:
-                    # Cálculo de stock visual
                     total_necesario = c.cantidad_requerida * d.cantidad
                     comps_data.append({
                         'sku': c.product.sku,
@@ -4757,19 +4764,19 @@ def obtener_detalle_venta(order_id):
             items_data.append({
                 'sku': sku_mostrado,
                 'descripcion': nombre_mostrado,
-                'estado_producto': d.product.estado if d.product else '',
+                'estado_producto': prod_obj.estado if prod_obj else '',
                 'cantidad': d.cantidad,
                 'precio': d.precio_aplicado,
                 'subtotal': d.subtotal,
                 'tipo': d.item_type,
-                'componentes': comps_data, # Enviamos la lista al HTML
+                'origen_inventario': origen_d,   # <-- NUEVO
+                'componentes': comps_data,
                 'check_almacen': d.check_almacen,
-                # --- NUEVOS CAMPOS DE DESCUENTO INDIVIDUAL ---
                 'precio_base': getattr(d, 'precio_base', d.precio_aplicado) or d.precio_aplicado,
                 'desc_tipo': getattr(d, 'desc_tipo', ''),
                 'desc_valor': getattr(d, 'desc_valor', 0.0) or 0.0,
                 'desc_label': getattr(d, 'desc_label', '') or ''
-            })
+            })      
 
         # 3. Datos Generales (Manejo de nulos con "or '-'")
         data = {
@@ -4777,6 +4784,7 @@ def obtener_detalle_venta(order_id):
             'vendedor_id': orden.vendedor_id,
             'fecha': orden.fecha.strftime('%d/%m/%Y %H:%M'),
             'estado': orden.estado,
+            'origen_inventario': getattr(orden, 'origen_inventario', 'ANCLAJES') or 'ANCLAJES',   # <-- NUEVO
             'vendedor': orden.vendedor.nombre_completo if orden.vendedor else 'Desconocido',
             
             # Cliente
