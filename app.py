@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent, ClientContact, ClientContactLog, ClientRubroVendedor
+from models import db, User, Product, Category, Client, Order, OrderDetail, ProductMovement, AuditLog, SystemConfig,OrderKitComponent, ClientContact, ClientContactLog, ClientRubroVendedor, IntercompanyTransfer
 from models import ProductImportBolts, CategoryImportBolts, ProductMovementImportBolts
 from models import ProductMovement
 from models import Payment
@@ -5089,6 +5089,19 @@ def procesar_salida_almacen(order_id):
                 )
                 db.session.add(kardex)
 
+                # --- NUEVO: SI ES DE IMPORTBOLTS, REGISTRAR EL TRASLADO INTER-EMPRESA ---
+                if detalle.origen_inventario == 'IMPORTBOLTS':
+                    traslado = IntercompanyTransfer(
+                        order_id=orden.id,
+                        order_detail_id=detalle.id,
+                        product_importbolts_id=detalle.product_id_importbolts,
+                        cantidad=detalle.cantidad,
+                        fecha_despacho=hora_peru(),
+                        despachado_por_id=session['user_id'],
+                        estado_facturacion='PENDIENTE'
+                    )
+                    db.session.add(traslado)
+
             elif detalle.item_type == 'GLB':
                 for comp in detalle.kit_components:
                     prod_c = comp.product
@@ -5107,7 +5120,6 @@ def procesar_salida_almacen(order_id):
                     )
                     db.session.add(kardex_c)
 
-        # CAMBIO: Estado final más claro
         orden.estado = 'Entregado'
         db.session.commit()
         
@@ -5149,6 +5161,15 @@ def procesar_devolucion(order_id):
                     motivo=f"Devolución NP-{orden.id:05d} | {motivo_dev}"
                 )
                 db.session.add(kardex)
+
+                # --- NUEVO: SI ES DE IMPORTBOLTS, ANULAR EL TRASLADO PENDIENTE (SI AÚN NO SE FACTURÓ) ---
+                if detalle.origen_inventario == 'IMPORTBOLTS':
+                    traslado = IntercompanyTransfer.query.filter_by(
+                        order_detail_id=detalle.id, estado_facturacion='PENDIENTE'
+                    ).first()
+                    if traslado:
+                        traslado.estado_facturacion = 'ANULADO_DEVOLUCION'
+                        traslado.notas = (traslado.notas or '') + f" | Anulado por devolución: {motivo_dev}"
 
             elif detalle.item_type == 'GLB':
                 for comp in detalle.kit_components:
@@ -5864,6 +5885,49 @@ def ver_kardex_importbolts():
                            categorias=categorias,
                            pagination=pagination)
 
+@app.route('/traslados_intercompany')
+def traslados_intercompany():
+    if session.get('role') not in ['admin', 'administracion']:
+        return "Acceso denegado", 403
+    
+    filtro = request.args.get('estado', 'PENDIENTE')
+    query = IntercompanyTransfer.query
+    
+    if filtro != 'todos':
+        query = query.filter_by(estado_facturacion=filtro)
+    
+    traslados = query.order_by(IntercompanyTransfer.fecha_despacho.desc()).all()
+    
+    cuenta_pendientes = IntercompanyTransfer.query.filter_by(estado_facturacion='PENDIENTE').count()
+    
+    return render_template('traslados_intercompany.html', 
+                           traslados=traslados, 
+                           filtro_actual=filtro,
+                           cuenta_pendientes=cuenta_pendientes)
+
+
+@app.route('/api/marcar_traslado_facturado/<int:traslado_id>', methods=['POST'])
+def marcar_traslado_facturado(traslado_id):
+    if session.get('role') not in ['admin', 'administracion']:
+        return {'status': 'error', 'msg': 'No autorizado'}, 403
+    
+    traslado = IntercompanyTransfer.query.get_or_404(traslado_id)
+    
+    numero_doc = request.form.get('numero_documento', '').strip()
+    notas = request.form.get('notas', '').strip()
+    
+    if not numero_doc:
+        return {'status': 'error', 'msg': 'Debe ingresar el número de documento externo (factura/guía).'}
+    
+    traslado.estado_facturacion = 'FACTURADO'
+    traslado.numero_documento_externo = numero_doc
+    traslado.notas = notas
+    traslado.fecha_facturacion = hora_peru()
+    traslado.facturado_por_id = session.get('user_id')
+    
+    db.session.commit()
+    return {'status': 'success', 'msg': 'Traslado marcado como facturado correctamente.'}
+
 # --- RUTA SECRETA PARA INICIALIZAR LA BASE DE DATOS EN RENDER ---
 # --- RUTA SECRETA PARA CREAR/RESETEAR LA BASE DE DATOS DESDE EL NAVEGADOR ---
 
@@ -5877,100 +5941,13 @@ def fix_estados_y_fechas():
     except Exception as e:
         return f"<h2>Aviso: {str(e)} (Si dice 'duplicate column name', significa que ya se agregó).</h2>"
     
-@app.route('/fix_revisor')
-def fix_revisor():
+@app.route('/fix_intercompany_transfer')
+def fix_intercompany_transfer():
     try:
-        from sqlalchemy import text
-        with db.engine.connect() as conn:
-            conn.execute(text('ALTER TABLE "order" ADD COLUMN revisor_inicial_nombre VARCHAR(100)'))
-            conn.commit()
-        return "<h2>✅ Base de datos actualizada: Nombre de revisor agregado.</h2>"
-    except Exception as e:
-        return f"<h2>Aviso: {str(e)}</h2>"
-
-@app.route('/fix_render_db')
-def fix_render_db():
-    try:
-        from sqlalchemy import text
-        # isolation_level="AUTOCOMMIT" evita que un error previo bloquee las siguientes consultas
-        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            
-            # 1. Chofer ID (ubicado arriba en el modelo, pero faltaba registrar)
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN chofer_id INTEGER'))
-            except Exception as e:
-                print(f"Aviso chofer_id: {e}")
-
-            # 2. Datos de Almacén (Nuevos)
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN peso_total VARCHAR(50)'))
-            except Exception as e:
-                print(f"Aviso peso_total: {e}")
-                
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN cantidad_bultos VARCHAR(50)'))
-            except Exception as e:
-                print(f"Aviso cantidad_bultos: {e}")
-
-            # 3. Categorías y detalles de Cancelación / Rechazos
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN categoria_cancelacion VARCHAR(100)'))
-            except Exception as e:
-                print(f"Aviso categoria_cancelacion: {e}")
-
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN detalle_cancelacion TEXT'))
-            except Exception as e:
-                print(f"Aviso detalle_cancelacion: {e}")
-
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN fecha_cancelacion TIMESTAMP'))
-            except Exception as e:
-                print(f"Aviso fecha_cancelacion: {e}")
-
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN usuario_cancela_id INTEGER'))
-            except Exception as e:
-                print(f"Aviso usuario_cancela_id: {e}")
-
-            # 4. Motivos de Anulación y Devolución
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN motivo_anulacion VARCHAR(255)'))
-            except Exception as e:
-                print(f"Aviso motivo_anulacion: {e}")
-
-            try:
-                conn.execute(text('ALTER TABLE "order" ADD COLUMN motivo_devolucion VARCHAR(255)'))
-            except Exception as e:
-                print(f"Aviso motivo_devolucion: {e}")
-
-        return "<h2>✅ Base de datos en Render actualizada. Solo se agregaron los últimos campos faltantes.</h2>"
-    except Exception as e:
-        return f"<h2>❌ Error general: {str(e)}</h2>"
-
-@app.route('/fix_cliente_dueno_y_contactos')
-def fix_cliente_dueno_y_contactos():
-    try:
-        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            try:
-                conn.execute(text('ALTER TABLE client ADD COLUMN creado_por_id INTEGER'))
-            except Exception as e:
-                print(f"Aviso creado_por_id: {e}")
-        # Crea client_contact si no existe (usa el modelo, compatible Postgres/SQLite)
-        db.create_all()
-        return "<h2>✅ Migración aplicada: creado_por_id agregado y tabla client_contact creada.</h2>"
+        db.create_all()  # Crea solo las tablas nuevas que aún no existen (no borra nada)
+        return "<h2>✅ Tabla intercompany_transfer creada correctamente.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
-
-
-@app.route('/fix_order_origen_inventario')
-def fix_order_origen_inventario():
-    try:
-        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            conn.execute(text("ALTER TABLE \"order\" ADD COLUMN origen_inventario VARCHAR(20) DEFAULT 'ANCLAJES'"))
-        return "<h2>✅ Columna origen_inventario agregada a la tabla order.</h2>"
-    except Exception as e:
-        return f"<h2>Aviso: {str(e)}</h2>"
 
     
 # --- ARRANQUE DE LA APLICACIÓN ---

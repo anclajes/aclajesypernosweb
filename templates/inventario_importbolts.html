@@ -44,7 +44,7 @@
         </div>
         <div class="d-flex flex-column flex-sm-row flex-wrap gap-2 w-100 w-lg-auto">
             {% if session.get('role') in ['admin', 'almacen', 'administracion'] %}
-            <a href="{{ url_for('ver_kardex') }}" class="btn btn-outline-dark shadow-sm w-100 w-sm-auto">
+            <a href="{{ url_for('ver_kardex_importbolts') }}" class="btn btn-outline-dark shadow-sm w-100 w-sm-auto">
                 <i class="bi bi-clock-history"></i> Kardex
             </a>
             {% endif %}

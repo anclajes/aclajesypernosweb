@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="mb-0">🔄 Traslados Inter-Empresa (ImportBolts → Anclajes)</h2>
+        <p class="text-muted small mb-0">Ventas despachadas con productos de ImportBolts, pendientes de formalizar con documento externo.</p>
+    </div>
+    {% if cuenta_pendientes > 0 %}
+    <span class="badge bg-danger fs-6">{{ cuenta_pendientes }} pendiente(s)</span>
+    {% endif %}
+</div>
+
+<ul class="nav nav-pills mb-3 gap-2">
+    <li class="nav-item">
+        <a class="btn {% if filtro_actual == 'PENDIENTE' %}btn-danger{% else %}btn-outline-danger{% endif %}" 
+           href="{{ url_for('traslados_intercompany', estado='PENDIENTE') }}">
+            <i class="bi bi-exclamation-circle"></i> Pendientes
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="btn {% if filtro_actual == 'FACTURADO' %}btn-success{% else %}btn-outline-success{% endif %}" 
+           href="{{ url_for('traslados_intercompany', estado='FACTURADO') }}">
+            <i class="bi bi-check-circle"></i> Facturados
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="btn {% if filtro_actual == 'todos' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" 
+           href="{{ url_for('traslados_intercompany', estado='todos') }}">
+            <i class="bi bi-list-ul"></i> Todos
+        </a>
+    </li>
+</ul>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover align-middle mb-0 small">
+            <thead style="background-color:#004b87;" class="text-white text-nowrap">
+                <tr>
+                    <th class="ps-3">Cotización</th>
+                    <th>Fecha Despacho</th>
+                    <th>Producto (ImportBolts)</th>
+                    <th class="text-center">Cant.</th>
+                    <th>Despachado por</th>
+                    <th class="text-center">Estado</th>
+                    <th>Documento Externo</th>
+                    <th class="text-center">Acción</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in traslados %}
+                <tr>
+                    <td class="ps-3 fw-bold text-primary">COT-{{ "%05d"|format(t.order_id) }}</td>
+                    <td>{{ t.fecha_despacho.strftime('%d/%m/%Y %H:%M') }}</td>
+                    <td>
+                        <strong>{{ t.product_importbolts.sku }}</strong><br>
+                        <span class="text-muted">{{ t.product_importbolts.nombre }}</span>
+                    </td>
+                    <td class="text-center fw-bold">{{ t.cantidad }}</td>
+                    <td>{{ t.despachado_por.nombre_completo if t.despachado_por else '-' }}</td>
+                    <td class="text-center">
+                        {% if t.estado_facturacion == 'PENDIENTE' %}
+                            <span class="badge bg-danger">PENDIENTE</span>
+                        {% elif t.estado_facturacion == 'FACTURADO' %}
+                            <span class="badge bg-success">FACTURADO</span>
+                        {% else %}
+                            <span class="badge bg-secondary">ANULADO (Devolución)</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if t.numero_documento_externo %}
+                            <span class="text-dark fw-bold">{{ t.numero_documento_externo }}</span>
+                            <br><small class="text-muted">{{ t.fecha_facturacion.strftime('%d/%m/%Y') if t.fecha_facturacion else '' }}</small>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-center">
+                        {% if t.estado_facturacion == 'PENDIENTE' %}
+                        <button class="btn btn-sm btn-success" onclick="abrirModalFacturar({{ t.id }}, 'COT-{{ "%05d"|format(t.order_id) }}')">
+                            <i class="bi bi-check2"></i> Marcar Facturado
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center py-5 text-muted">No hay traslados en este filtro.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal para marcar como facturado -->
+<div class="modal fade" id="modalFacturar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h6 class="modal-title fw-bold" id="tituloModalFacturar">Registrar Documento Externo</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="traslado_id_actual">
+                <label class="small fw-bold text-muted mb-1">N° de Factura / Guía de Remisión (Sistema Externo) *</label>
+                <input type="text" id="input_numero_documento" class="form-control mb-3" placeholder="Ej: F001-00234">
+                <label class="small fw-bold text-muted mb-1">Notas (Opcional)</label>
+                <textarea id="input_notas_traslado" class="form-control" rows="2"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success fw-bold" onclick="confirmarFacturado()">Guardar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function abrirModalFacturar(id, codigo) {
+    document.getElementById('traslado_id_actual').value = id;
+    document.getElementById('tituloModalFacturar').innerText = `Registrar Documento — ${codigo}`;
+    document.getElementById('input_numero_documento').value = '';
+    document.getElementById('input_notas_traslado').value = '';
+    new bootstrap.Modal(document.getElementById('modalFacturar')).show();
+}
+
+function confirmarFacturado() {
+    const id = document.getElementById('traslado_id_actual').value;
+    const numero = document.getElementById('input_numero_documento').value.trim();
+    const notas = document.getElementById('input_notas_traslado').value.trim();
+    
+    if (!numero) return Swal.fire('Falta dato', 'Ingrese el número de documento.', 'warning');
+    
+    let fd = new FormData();
+    fd.append('numero_documento', numero);
+    fd.append('notas', notas);
+    
+    fetch(`/api/marcar_traslado_facturado/${id}`, { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                bootstrap.Modal.getInstance(document.getElementById('modalFacturar')).hide();
+                Swal.fire('Listo', data.msg, 'success').then(() => location.reload());
+            } else {
+                Swal.fire('Error', data.msg, 'error');
+            }
+        });
+}
+</script>
+{% endblock %}
