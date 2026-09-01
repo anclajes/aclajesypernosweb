@@ -2,7 +2,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>📊 Kardex Anclajes y Pernos (Auditoría de Inventario)</h2>
+    <h2>📊 Kardex Import Bolts (Auditoría de Inventario)</h2>
     <div class="d-flex gap-2">
         <span class="badge bg-success-subtle text-success border border-success d-flex align-items-center">
             <i class="bi bi-arrow-up-circle me-1"></i> Entradas
@@ -10,11 +10,11 @@
         <span class="badge bg-danger-subtle text-danger border border-danger d-flex align-items-center">
             <i class="bi bi-arrow-down-circle me-1"></i> Salidas
         </span>
-        <a href="{{ url_for('inventario') }}" class="btn btn-outline-secondary btn-sm ms-2">
+        <a href="{{ url_for('inventario_importbolts') }}" class="btn btn-outline-secondary btn-sm ms-2">
             <i class="bi bi-arrow-left"></i> Volver
         </a>
-        <a href="{{ url_for('ver_kardex_importbolts') }}" class="btn btn-outline-success btn-sm ms-2">
-            <i class="bi bi-globe-americas"></i> Ver Kardex Import Bolts
+        <a href="{{ url_for('ver_kardex') }}" class="btn btn-outline-primary btn-sm ms-2">
+            <i class="bi bi-building"></i> Ver Kardex Anclajes
         </a>
     </div>
 </div>
@@ -74,7 +74,7 @@
                     <button type="submit" class="btn btn-primary btn-sm w-100" title="Aplicar Filtros">
                         <i class="bi bi-filter"></i> Filtrar
                     </button>
-                    <a href="{{ url_for('ver_kardex') }}" class="btn btn-outline-secondary btn-sm w-50" title="Limpiar Filtros">
+                    <a href="{{ url_for('ver_kardex_importbolts') }}" class="btn btn-outline-secondary btn-sm w-50" title="Limpiar Filtros">
                         <i class="bi bi-x-lg"></i>
                     </a>
                 </div>
@@ -86,7 +86,7 @@
 <div class="card shadow-sm border-0">
     <div class="card-body p-0 table-responsive" style="min-height: 400px;">
         <table class="table table-hover mb-0 align-middle small">
-            <thead class="table-dark text-nowrap sticky-top">
+            <thead style="background-color:#002e52;" class="text-white text-nowrap sticky-top">
                 <tr>
                     <th class="ps-3">Fecha / Hora</th>
                     <th>Producto</th>
@@ -150,7 +150,7 @@
         <nav aria-label="Navegación">
             <ul class="pagination justify-content-center mb-0 pagination-sm">
                 <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-                    <a class="page-link" href="{{ url_for('ver_kardex', page=pagination.prev_num, busqueda=request.args.get('busqueda',''), categoria=request.args.get('categoria','todas'), tipo=request.args.get('tipo',''), fecha_inicio=request.args.get('fecha_inicio',''), fecha_fin=request.args.get('fecha_fin','')) }}">Anterior</a>
+                    <a class="page-link" href="{{ url_for('ver_kardex_importbolts', page=pagination.prev_num, busqueda=request.args.get('busqueda',''), categoria=request.args.get('categoria','todas'), tipo=request.args.get('tipo',''), fecha_inicio=request.args.get('fecha_inicio',''), fecha_fin=request.args.get('fecha_fin','')) }}">Anterior</a>
                 </li>
                 
                 <li class="page-item disabled">
@@ -161,7 +161,7 @@
                 </li>
                 
                 <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-                    <a class="page-link" href="{{ url_for('ver_kardex', page=pagination.next_num, busqueda=request.args.get('busqueda',''), categoria=request.args.get('categoria','todas'), tipo=request.args.get('tipo',''), fecha_inicio=request.args.get('fecha_inicio',''), fecha_fin=request.args.get('fecha_fin','')) }}">Siguiente</a>
+                    <a class="page-link" href="{{ url_for('ver_kardex_importbolts', page=pagination.next_num, busqueda=request.args.get('busqueda',''), categoria=request.args.get('categoria','todas'), tipo=request.args.get('tipo',''), fecha_inicio=request.args.get('fecha_inicio',''), fecha_fin=request.args.get('fecha_fin','')) }}">Siguiente</a>
                 </li>
             </ul>
         </nav>

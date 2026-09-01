@@ -2398,9 +2398,9 @@ def descargar_cotizacion(order_id):
     
     for d in orden.details:
         sku_final = "SERV"
-        if d.product:
-            sku_final = d.product.sku
-        elif d.item_type == 'FABRICACION':
+        if d.producto:                          # antes: d.product
+            sku_final = d.producto.sku
+        elif d.item_type == 'FABRICACION':  
             mapa_skus = {
                 'SERVICIO DE CORTE': 'SRV-CORT',
                 'SERVICIO DE SOLDADURA': 'SRV-SOLD',
@@ -2416,16 +2416,14 @@ def descargar_cotizacion(order_id):
             if sku_final == 'SRV-GEN':
                 prod_db = Product.query.filter_by(nombre=titulo_limpio).first()
                 if prod_db: sku_final = prod_db.sku
-
         elif d.item_type == 'GLB':
             sku_final = "GLB-001" 
 
-        # Lógica RichText (Descripción)
         descripcion_rich = RichText()
-        estilo_fuente = {'font': 'Calibri', 'size': 18} # ~9pt
+        estilo_fuente = {'font': 'Calibri', 'size': 18}
 
-        if d.product and d.item_type == 'PRODUCTO':
-            descripcion_rich.add(d.product.nombre, **estilo_fuente)
+        if d.producto and d.item_type == 'PRODUCTO':    # antes: d.product
+            descripcion_rich.add(d.producto.nombre, **estilo_fuente)
         else:
             titulo = d.nombre_personalizado_titulo.upper() if d.nombre_personalizado_titulo else ""
             cuerpo = d.nombre_personalizado.upper() if d.nombre_personalizado else "" 
@@ -2440,8 +2438,8 @@ def descargar_cotizacion(order_id):
         unidad_final = "UND" 
         if d.item_type == 'FABRICACION': unidad_final = "SRV"
         elif d.item_type == 'GLB': unidad_final = "GLB"
-        elif d.product and hasattr(d.product, 'unidad_medida'): 
-            unidad_final = d.product.unidad_medida or "UND"
+        elif d.producto and hasattr(d.producto, 'unidad_medida'):   # antes: d.product
+            unidad_final = d.producto.unidad_medida or "UND"
         
         lista_items.append({
             'item': i,
@@ -2613,8 +2611,8 @@ def descargar_cotizacion_v2(order_id):
  
     for d in orden.details:
         sku_final = "SERV"
-        if d.product:
-            sku_final = d.product.sku
+        if d.producto:                          # antes: d.product
+            sku_final = d.producto.sku
         elif d.item_type == 'FABRICACION':
             mapa_skus = {
                 'SERVICIO DE CORTE': 'SRV-CORT',
@@ -2630,14 +2628,12 @@ def descargar_cotizacion_v2(order_id):
  
             if sku_final == 'SRV-GEN':
                 prod_db = Product.query.filter_by(nombre=titulo_limpio).first()
-                if prod_db:
-                    sku_final = prod_db.sku
- 
+                if prod_db: sku_final = prod_db.sku
         elif d.item_type == 'GLB':
-            sku_final = "GLB-001"
+            sku_final = "GLB-001" 
  
-        if d.product and d.item_type == 'PRODUCTO':
-            descripcion_html = d.product.nombre
+        if d.producto and d.item_type == 'PRODUCTO':
+            descripcion_html = d.producto.nombre
         else:
             titulo = d.nombre_personalizado_titulo.upper() if d.nombre_personalizado_titulo else ""
             cuerpo = d.nombre_personalizado.upper() if d.nombre_personalizado else ""
@@ -2768,7 +2764,7 @@ def descargar_nota_pedido(order_id):
     for d in orden.details:
         sku_final = "SERV"
         if d.product:
-            sku_final = d.product.sku
+            sku_final = d.producto.sku
         elif d.item_type == 'FABRICACION':
             mapa_skus = {
                 'SERVICIO DE CORTE': 'SRV-CORT', 'SERVICIO DE SOLDADURA': 'SRV-SOLD',
@@ -2785,8 +2781,8 @@ def descargar_nota_pedido(order_id):
             sku_final = "GLB-001" 
 
         # Construir descripción HTML (Reemplazo del RichText viejo)
-        if d.product and d.item_type == 'PRODUCTO':
-            descripcion_html = d.product.nombre
+        if d.producto and d.item_type == 'PRODUCTO':
+            descripcion_html = d.producto.nombre
         else:
             titulo = d.nombre_personalizado_titulo.upper() if d.nombre_personalizado_titulo else ""
             cuerpo = d.nombre_personalizado.upper() if d.nombre_personalizado else ""
@@ -2801,7 +2797,7 @@ def descargar_nota_pedido(order_id):
         elif d.product and hasattr(d.product, 'unidad_medida'): 
             unidad_final = d.product.unidad_medida or "UND"
         
-        ubicacion_final = d.product.ubicacion if (d.product and hasattr(d.product, 'ubicacion')) else ""
+        ubicacion_final = d.producto.ubicacion if (d.producto and hasattr(d.producto, 'ubicacion')) else ""
 
         lista_items.append({
             'item': i,
@@ -3929,6 +3925,8 @@ def ver_kardex():
                            categorias=categorias,
                            pagination=pagination) # Pasamos la info de las páginas al HTML
 
+
+
 @app.route('/despachos')
 def despachos():
     # Permitimos acceso a admin y almacen (y chofer si quieres que vean su historial)
@@ -4315,9 +4313,9 @@ def aprobar_cotizacion_gerencia(order_id):
         errores_stock = []
         
         for detalle in orden.details:
-            if detalle.product_id: 
-                prod = Product.query.get(detalle.product_id)
-                if prod.stock_actual < detalle.cantidad:
+            if detalle.item_type == 'PRODUCTO':
+                prod = get_producto_detalle(detalle)   # <-- CAMBIO: helper en vez de Product.query.get
+                if prod and prod.stock_actual < detalle.cantidad:
                     errores_stock.append(f"{prod.nombre} (Faltan {detalle.cantidad - prod.stock_actual})")
             
             if detalle.item_type == 'GLB':
@@ -4330,14 +4328,11 @@ def aprobar_cotizacion_gerencia(order_id):
         if errores_stock:
             return {'status': 'error', 'msg': 'Stock insuficiente: ' + ', '.join(errores_stock)}
 
-        # CAMBIO: Estado más claro
         orden.estado = 'Por Despachar'
         orden.fecha_aprobacion = hora_peru() 
         orden.gerente_nombre = session.get('nombre')
 
-        # --- NUEVO: CÁLCULO DE FECHA DE ENTREGA REAL ---
         if orden.dias_habiles_entrega:
-            # Calcula la fecha real sumando los días hábiles a la fecha de hoy
             orden.fecha_entrega = sumar_dias_habiles(hora_peru().date(), orden.dias_habiles_entrega)
         
         db.session.commit()
@@ -4347,7 +4342,6 @@ def aprobar_cotizacion_gerencia(order_id):
     except Exception as e:
         db.session.rollback()
         return {'status': 'error', 'msg': f'Error crítico: {str(e)}'}
-# --- EN APP.PY (Función historial_ventas AJUSTADA) ---
 
 @app.route('/historial_ventas')
 def historial_ventas():
@@ -5820,6 +5814,55 @@ def actualizar_minimos_masivos_importbolts():
     except Exception as e:
         db.session.rollback()
         return {'status': 'error', 'msg': str(e)}
+
+@app.route('/kardex_importbolts')
+def ver_kardex_importbolts():
+    if session.get('user_id') is None: return redirect(url_for('login'))
+    
+    query = ProductMovementImportBolts.query.join(ProductImportBolts)
+    
+    busqueda = request.args.get('busqueda')
+    if busqueda:
+        query = query.filter(
+            or_(
+                ProductImportBolts.nombre.ilike(f"%{busqueda}%"),
+                ProductImportBolts.sku.ilike(f"%{busqueda}%"),
+                ProductMovementImportBolts.motivo.ilike(f"%{busqueda}%")
+            )
+        )
+    
+    cat_nombre = request.args.get('categoria')
+    if cat_nombre and cat_nombre != 'todas':
+        query = query.filter(ProductImportBolts.categoria == cat_nombre)
+
+    tipo_mov = request.args.get('tipo')
+    if tipo_mov and tipo_mov in ['ENTRADA', 'SALIDA']:
+        query = query.filter(ProductMovementImportBolts.tipo == tipo_mov)
+
+    ocultar_iniciales = request.args.get('ocultar_iniciales')
+    if ocultar_iniciales == 'on':
+        query = query.filter(~ProductMovementImportBolts.motivo.ilike('%Inicial%'))
+
+    fecha_inicio = request.args.get('fecha_inicio')
+    fecha_fin = request.args.get('fecha_fin')
+    if fecha_inicio and fecha_fin:
+        start = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+        end = datetime.strptime(fecha_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+        query = query.filter(ProductMovementImportBolts.fecha.between(start, end))
+        
+    query = query.order_by(ProductMovementImportBolts.fecha.desc())
+    
+    page = request.args.get('page', 1, type=int)
+    per_page = 25
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    movimientos = pagination.items
+    categorias = CategoryImportBolts.query.all()
+    
+    return render_template('kardex_importbolts.html', 
+                           movimientos=movimientos, 
+                           categorias=categorias,
+                           pagination=pagination)
 
 # --- RUTA SECRETA PARA INICIALIZAR LA BASE DE DATOS EN RENDER ---
 # --- RUTA SECRETA PARA CREAR/RESETEAR LA BASE DE DATOS DESDE EL NAVEGADOR ---
