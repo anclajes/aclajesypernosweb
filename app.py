@@ -5052,31 +5052,39 @@ def procesar_salida_almacen(order_id):
     # ==============================================================
     # 1. VERIFICACIÓN DE SEGURIDAD: ¿Aún hay stock suficiente?
     # ==============================================================
+    errores_stock = []   # <-- FALTABA ESTA LÍNEA
+
     for detalle in orden.details:
-        if detalle.item_type == 'PRODUCTO' and detalle.product_id:
-            prod = Product.query.get(detalle.product_id)
-            if prod.stock_actual < detalle.cantidad:
-                return {'status': 'error', 'msg': f'¡ALERTA! El stock de {prod.sku} bajó a {prod.stock_actual}. No alcanza para despachar las {detalle.cantidad} unidades requeridas. Espere reposición.'}
+        if detalle.item_type == 'PRODUCTO':
+            prod = get_producto_detalle(detalle)
+            if prod and prod.stock_actual < detalle.cantidad:
+                errores_stock.append(f"{prod.nombre} (Faltan {detalle.cantidad - prod.stock_actual})")
                 
         elif detalle.item_type == 'GLB':
             for comp in detalle.kit_components:
                 prod_c = comp.product
                 cant_req = comp.cantidad_requerida * detalle.cantidad
                 if prod_c.stock_actual < cant_req:
-                    return {'status': 'error', 'msg': f'¡ALERTA! Falta stock en kit para {prod_c.sku}. Hay {prod_c.stock_actual}, necesita {cant_req}.'}
+                    errores_stock.append(f"Componente {prod_c.sku} en Kit (Faltan {cant_req - prod_c.stock_actual})")
+
+    if errores_stock:   # <-- FALTABA ESTA VALIDACIÓN
+        return {'status': 'error', 'msg': '¡ALERTA! Stock insuficiente: ' + ', '.join(errores_stock)}
 
     # ==============================================================
     # 2. DESCARGO (Si pasó la validación, el try se ejecuta normal)
     # ==============================================================
-        
     try:
         for detalle in orden.details:
-            if detalle.product_id and detalle.item_type == 'PRODUCTO':
-                prod = Product.query.get(detalle.product_id)
+            if detalle.item_type == 'PRODUCTO':
+                prod = get_producto_detalle(detalle)
+                if not prod:
+                    continue
+                ModeloKardex = get_modelo_kardex(detalle.origen_inventario)
+                
                 stock_anterior = prod.stock_actual
                 prod.stock_actual -= detalle.cantidad
                 
-                kardex = ProductMovement(
+                kardex = ModeloKardex(
                     product_id=prod.id,
                     user_id=session['user_id'],
                     tipo='SALIDA',
@@ -5129,14 +5137,18 @@ def procesar_devolucion(order_id):
     motivo_dev = data.get('motivo', '') or 'Devolución sin motivo especificado'
 
     try:
-        # --- LÓGICA DE REINGRESO DE STOCK Y KARDEX (Se mantiene igual) ---
+        # --- LÓGICA DE REINGRESO DE STOCK Y KARDEX (AHORA SEPARADA POR INVENTARIO) ---
         for detalle in orden.details:
-            if detalle.product_id and detalle.item_type == 'PRODUCTO':
-                prod = Product.query.get(detalle.product_id)
+            if detalle.item_type == 'PRODUCTO':
+                prod = get_producto_detalle(detalle)
+                if not prod:
+                    continue
+                ModeloKardex = get_modelo_kardex(detalle.origen_inventario)
+
                 stock_anterior = prod.stock_actual
                 prod.stock_actual += detalle.cantidad
                 
-                kardex = ProductMovement(
+                kardex = ModeloKardex(
                     product_id=prod.id, user_id=session['user_id'], tipo='ENTRADA',
                     cantidad=detalle.cantidad, stock_anterior=stock_anterior,
                     stock_nuevo=prod.stock_actual,

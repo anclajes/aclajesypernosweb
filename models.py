@@ -289,7 +289,14 @@ class OrderDetail(db.Model):
     product = db.relationship('Product')
     
     # ¡ESTA LÍNEA FALTABA! Sin ella, orden.details da error
-    order = db.relationship('Order', backref='details') 
+    order = db.relationship('Order', backref='details')
+
+    @property
+    def producto(self):
+        """Devuelve el producto real sin importar el inventario de origen (Anclajes o ImportBolts)."""
+        if self.origen_inventario == 'IMPORTBOLTS':
+            return self.product_importbolts
+        return self.product     
     
     # Relación con componentes del kit
     kit_components = db.relationship('OrderKitComponent', backref='parent_detail', cascade="all, delete-orphan")

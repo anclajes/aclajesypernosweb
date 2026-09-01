@@ -94,7 +94,18 @@
                     <tbody>
                         {% for o in ordenes_verificar %}
                         <tr>
-                            <td class="ps-3 fw-bold text-info">COT-{{ "%05d"|format(o.id) }}</td>
+                            <td class="ps-3 fw-bold text-info">
+                                COT-{{ "%05d"|format(o.id) }}
+                                {% if o.origen_inventario == 'IMPORTBOLTS' %}
+                                    <span class="badge d-block mt-1" style="background-color:#8BC34A; color:#1B5E20; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-globe-americas"></i> IMPORT BOLTS
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-white d-block mt-1" style="background-color:#0B3D91; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-building"></i> ANCLAJES
+                                    </span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="fw-bold text-truncate" style="max-width:200px">{{ o.cliente.nombre }}</div>
                                 <small class="text-muted">{{ o.cliente.documento }}</small>
@@ -148,20 +159,20 @@
                                                 {% for d in o.details %}
                                                 <tr>
                                                     <td class="ps-3 fw-bold text-muted small">
-                                                        {% if d.item_type == 'PRODUCTO' and d.product %}
-                                                            {{ d.product.sku }}
+                                                        {% if d.item_type == 'PRODUCTO' and d.producto %}
+                                                            {{ d.producto.sku }}
                                                         {% else %}
                                                             <span class="badge bg-info text-dark">KIT/SRV</span>
                                                         {% endif %}
                                                     </td>
                                                     <td class="text-primary small">
-                                                        {% if d.product %}
-                                                            <i class="bi bi-geo-alt-fill"></i> {{ d.product.ubicacion or '—' }}
+                                                        {% if d.producto %}
+                                                            <i class="bi bi-geo-alt-fill"></i> {{ d.producto.ubicacion or '—' }}
                                                         {% else %}—{% endif %}
                                                     </td>
                                                     <td class="small" style="max-width:250px; white-space:normal">
-                                                        {% if d.item_type == 'PRODUCTO' and d.product %}
-                                                            {{ d.product.nombre }}
+                                                        {% if d.item_type == 'PRODUCTO' and d.producto %}
+                                                            {{ d.producto.nombre }}
                                                         {% else %}
                                                             <strong>{{ d.nombre_personalizado_titulo }}</strong> 
                                                             {{ d.nombre_personalizado }}
@@ -169,15 +180,15 @@
                                                     </td>
                                                     <td class="text-center fw-bold fs-6">{{ d.cantidad }}</td>
                                                     <td class="text-center">
-                                                        {% if d.product %}
-                                                            <span class="badge {% if d.product.stock_actual >= d.cantidad %}bg-success{% else %}bg-danger{% endif %}">
-                                                                {{ d.product.stock_actual }}
+                                                        {% if d.producto %}
+                                                            <span class="badge {% if d.producto.stock_actual >= d.cantidad %}bg-success{% else %}bg-danger{% endif %}">
+                                                                {{ d.producto.stock_actual }}
                                                             </span>
                                                         {% else %}—{% endif %}
                                                     </td>
                                                     <td class="text-center">
-                                                        {% if d.product %}
-                                                            {% if d.product.stock_actual >= d.cantidad %}
+                                                        {% if d.producto %}
+                                                            {% if d.producto.stock_actual >= d.cantidad %}
                                                                 <span class="badge bg-success"><i class="bi bi-check-lg"></i> OK</span>
                                                             {% else %}
                                                                 <span class="badge bg-danger"><i class="bi bi-exclamation-lg"></i> FALTA</span>
@@ -254,7 +265,7 @@
                         <!-- 1. BÚSQUEDA PREVIA DE STOCK FALTANTE (Forzamos |float para comparar números reales) -->
                         {% set ns = namespace(falta_stock=false) %}
                         {% for d in o.details %}
-                            {% if d.product and d.product.stock_actual|float < d.cantidad|float %}
+                            {% if d.producto and d.producto.stock_actual|float < d.cantidad|float %}
                                 {% set ns.falta_stock = true %}
                             {% endif %}
                         {% endfor %}
@@ -263,6 +274,15 @@
                         <tr class="{% if ns.falta_stock %}table-danger border-start border-5 border-danger{% endif %}">
                             <td class="ps-3 fw-bold text-primary">
                                 COT-{{ "%05d"|format(o.id) }}
+                                {% if o.origen_inventario == 'IMPORTBOLTS' %}
+                                    <span class="badge d-block mt-1" style="background-color:#8BC34A; color:#1B5E20; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-globe-americas"></i> IMPORT BOLTS
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-white d-block mt-1" style="background-color:#0B3D91; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-building"></i> ANCLAJES
+                                    </span>
+                                {% endif %}
                                 {% if ns.falta_stock %}
                                     <div class="mt-1">
                                         <span class="badge bg-danger blink-anim shadow-sm" style="font-size:0.65rem">
@@ -375,19 +395,19 @@
                                                         <input type="checkbox" class="form-check-input border-secondary check-picking-{{ o.id }}" style="width: 1.5em; height: 1.5em; cursor: pointer;" onchange="validarChecksTabla('{{ o.id }}')">
                                                     </td>
                                                     <td class="ps-3 fw-bold text-muted small align-middle">
-                                                        {{ d.product.sku if d.product else 'SRV' }}
+                                                        {{ d.producto.sku if d.producto else 'SRV' }}
                                                     </td>
                                                     <td class="text-primary small align-middle">
-                                                        {% if d.product %}<i class="bi bi-geo-alt-fill"></i> {{ d.product.ubicacion or '—' }}{% else %}—{% endif %}
+                                                        {% if d.producto %}<i class="bi bi-geo-alt-fill"></i> {{ d.producto.ubicacion or '—' }}{% else %}—{% endif %}
                                                     </td>
                                                     <td class="small align-middle" style="white-space:normal">
-                                                        {{ d.product.nombre if d.product else d.nombre_personalizado }}
+                                                        {{ d.producto.nombre if d.producto else d.nombre_personalizado }}
                                                     </td>
                                                     <td class="text-center fw-bold align-middle fs-6">{{ d.cantidad }}</td>
                                                     <td class="text-center align-middle">
-                                                        {% if d.product %}
-                                                            <span class="badge {% if d.product.stock_actual|float >= d.cantidad|float %}bg-success{% else %}bg-danger blink-anim{% endif %}">
-                                                                {{ d.product.stock_actual }}
+                                                        {% if d.producto %}
+                                                            <span class="badge {% if d.producto.stock_actual|float >= d.cantidad|float %}bg-success{% else %}bg-danger blink-anim{% endif %}">
+                                                                {{ d.producto.stock_actual }}
                                                             </span>
                                                         {% else %}—{% endif %}
                                                     </td>
@@ -481,7 +501,18 @@
                     <tbody>
                         {% for o in ordenes_finalizadas %}
                         <tr>
-                            <td class="ps-3 fw-bold text-success">COT-{{ "%05d"|format(o.id) }}</td>
+                            <td class="ps-3 fw-bold text-success">
+                                COT-{{ "%05d"|format(o.id) }}
+                                {% if o.origen_inventario == 'IMPORTBOLTS' %}
+                                    <span class="badge d-block mt-1" style="background-color:#8BC34A; color:#1B5E20; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-globe-americas"></i> IMPORT BOLTS
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-white d-block mt-1" style="background-color:#0B3D91; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-building"></i> ANCLAJES
+                                    </span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="fw-bold text-truncate" style="max-width:150px">{{ o.cliente.nombre }}</div>
                                 {% if o.orden_compra %}
@@ -554,10 +585,10 @@
                                                 {% for d in o.details %}
                                                 <tr>
                                                     <td class="ps-3 fw-bold text-muted small align-middle">
-                                                        {{ d.product.sku if d.product else 'SRV' }}
+                                                        {{ d.producto.sku if d.producto else 'SRV' }}
                                                     </td>
                                                     <td class="small align-middle" style="white-space:normal">
-                                                        {{ d.product.nombre if d.product else d.nombre_personalizado }}
+                                                        {{ d.producto.nombre if d.producto else d.nombre_personalizado }}
                                                     </td>
                                                     <td class="text-center fw-bold align-middle">
                                                         <span class="badge bg-success">{{ d.cantidad }}</span>
@@ -643,7 +674,18 @@
                         {% for o in ordenes_devueltas %}
                         <!-- Fila Principal -->
                         <tr class="bg-light bg-opacity-50">
-                            <td class="ps-3 fw-bold text-dark">COT-{{ "%05d"|format(o.id) }}</td>
+                            <td class="ps-3 fw-bold text-dark">
+                                COT-{{ "%05d"|format(o.id) }}
+                                {% if o.origen_inventario == 'IMPORTBOLTS' %}
+                                    <span class="badge d-block mt-1" style="background-color:#8BC34A; color:#1B5E20; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-globe-americas"></i> IMPORT BOLTS
+                                    </span>
+                                {% else %}
+                                    <span class="badge text-white d-block mt-1" style="background-color:#0B3D91; font-size:0.62rem; width:fit-content;">
+                                        <i class="bi bi-building"></i> ANCLAJES
+                                    </span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="fw-bold text-truncate" style="max-width:200px">{{ o.cliente.nombre }}</div>
                                 {% if o.orden_compra %}
@@ -732,10 +774,10 @@
                                                 {% for d in o.details %}
                                                 <tr>
                                                     <td class="ps-3 fw-bold text-muted small align-middle">
-                                                        {{ d.product.sku if d.product else 'SRV' }}
+                                                        {{ d.producto.sku if d.producto else 'SRV' }}
                                                     </td>
                                                     <td class="small align-middle" style="white-space:normal">
-                                                        {{ d.product.nombre if d.product else d.nombre_personalizado }}
+                                                        {{ d.producto.nombre if d.producto else d.nombre_personalizado }}
                                                     </td>
                                                     <td class="text-center fw-bold align-middle">
                                                         <span class="badge bg-dark">{{ d.cantidad }}</span>
