@@ -49,6 +49,9 @@ class Product(db.Model):
     fecha_actualizacion = db.Column(db.DateTime, nullable=True) # Cuándo se subió
     actualizado_por = db.Column(db.String(100), nullable=True) # Quién subió el Excel
 
+    es_shadow_importbolts = db.Column(db.Boolean, default=False)
+    shadow_origen_sku = db.Column(db.String(50), nullable=True)
+
 # --- 4. KARDEX ---
 class ProductMovement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -308,24 +311,15 @@ class OrderDetail(db.Model):
     check_almacen = db.Column(db.Boolean, default=False)
 
 class IntercompanyTransfer(db.Model):
-    """Registro de auditoría: cada vez que se despacha una venta con productos de ImportBolts,
-    queda constancia aquí de que se debe formalizar la compra/venta entre empresas (documento externo)."""
     __tablename__ = 'intercompany_transfer'
-    
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
     order_detail_id = db.Column(db.Integer, db.ForeignKey('order_detail.id'), nullable=False)
     product_importbolts_id = db.Column(db.Integer, db.ForeignKey('product_importbolts.id'), nullable=False)
     cantidad = db.Column(db.Integer, nullable=False)
-    
     fecha_despacho = db.Column(db.DateTime, default=hora_peru)
     despachado_por_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
-    
-    # PENDIENTE -> aún no se hizo la factura/guía externa entre las dos empresas
-    # FACTURADO -> ya se emitió el documento externo, se registra la referencia
-    # ANULADO_DEVOLUCION -> la venta se devolvió, ya no aplica
     estado_facturacion = db.Column(db.String(30), default='PENDIENTE')
-    
     fecha_facturacion = db.Column(db.DateTime, nullable=True)
     facturado_por_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     numero_documento_externo = db.Column(db.String(100), nullable=True)

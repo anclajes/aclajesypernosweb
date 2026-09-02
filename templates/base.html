@@ -35,12 +35,12 @@
                     <i class="bi bi-grid-1x2 me-2"></i> <span>Dashboard</span>
                 </a>
 
-                <a class="nav-link" data-bs-toggle="collapse" href="#collapseInventario" role="button" aria-expanded="{{ 'true' if request.endpoint in ['inventario', 'inventario_importbolts', 'crear_producto', 'editar_producto'] else 'false' }}" aria-controls="collapseInventario">
+                <a class="nav-link" data-bs-toggle="collapse" href="#collapseInventario" role="button" aria-expanded="{{ 'true' if request.endpoint in ['inventario', 'inventario_importbolts', 'crear_producto', 'editar_producto', 'ver_kardex', 'ver_kardex_importbolts'] else 'false' }}" aria-controls="collapseInventario">
                     <i class="bi bi-boxes me-2"></i> <span>Gestión de Inventarios</span>
                     <i class="bi bi-chevron-down ms-auto" style="font-size: 0.8rem;"></i>
                 </a>
                 
-                <div class="collapse {{ 'show' if request.endpoint in ['inventario', 'inventario_importbolts', 'crear_producto', 'editar_producto'] else '' }}" id="collapseInventario">
+                <div class="collapse {{ 'show' if request.endpoint in ['inventario', 'inventario_importbolts', 'crear_producto', 'editar_producto', 'ver_kardex', 'ver_kardex_importbolts'] else '' }}" id="collapseInventario">
                     <ul class="nav flex-column ms-2 mb-2" style="border-left: 1px solid rgba(255,255,255,0.1);">
                         <li>
                             <a href="{{ url_for('inventario') }}" class="nav-link py-2 ps-3 {{ 'active' if request.endpoint == 'inventario' }}">
@@ -52,6 +52,18 @@
                                 <i class="bi bi-nut fs-6 me-2"></i> <span>Inv. ImportBolts</span>
                             </a>
                         </li>
+                        {% if session.get('role') in ['admin', 'almacen'] %}
+                        <li>
+                            <a href="{{ url_for('ver_kardex') }}" class="nav-link py-2 ps-3 {{ 'active' if request.endpoint == 'ver_kardex' }}">
+                                <i class="bi bi-clock-history fs-6 me-2"></i> <span>Kardex Anclajes</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('ver_kardex_importbolts') }}" class="nav-link py-2 ps-3 {{ 'active' if request.endpoint == 'ver_kardex_importbolts' }}">
+                                <i class="bi bi-clock-history fs-6 me-2"></i> <span>Kardex ImportBolts</span>
+                            </a>
+                        </li>
+                        {% endif %}
                     </ul>
                 </div>
 
@@ -67,18 +79,14 @@
 
                 {% if session.get('role') in ['admin', 'almacen'] %}
                 <div class="nav-title">Logística</div>
-                <a href="{{ url_for('ver_kardex') }}" class="nav-link {{ 'active' if request.endpoint == 'ver_kardex' }}">
-                    <i class="bi bi-clock-history me-2"></i> <span>Kardex</span>
-                </a>
                 <a href="{{ url_for('picking_almacen') }}" class="nav-link {{ 'active' if request.endpoint == 'picking_almacen' }}">
                     <i class="bi bi-box-arrow-up-right me-2"></i> <span>Salidas (Picking)</span>
                 </a>
                 {% endif %}
 
-                {% if session.get('role') == 'admin' %}
-                <div class="nav-title">Sistema</div>
-                <a href="{{ url_for('gestion_usuarios') }}" class="nav-link {{ 'active' if request.endpoint == 'gestion_usuarios' }}">
-                    <i class="bi bi-people me-2"></i> <span>Usuarios</span>
+                {% if session.get('role') in ['admin', 'administracion'] %}
+                <a href="{{ url_for('traslados_intercompany') }}" class="nav-link {{ 'active' if request.endpoint == 'traslados_intercompany' }}">
+                    <i class="bi bi-arrow-left-right me-2"></i> <span>Traslados Inter-Empresa</span>
                 </a>
                 {% endif %}
             </div>

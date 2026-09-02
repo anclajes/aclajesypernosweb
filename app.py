@@ -34,6 +34,121 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from xhtml2pdf import pisa
 
 
+
+def obtener_o_crear_shadow_product(prod_ib):
+    """Producto 'sombra' en el catálogo de Anclajes que representa el traslado de un SKU de 
+    ImportBolts. Su stock siempre vuelve a 0 en la misma operación, pero deja huella completa 
+    en el Kardex de Anclajes."""
+    sku_shadow = f"IBT-{prod_ib.sku}"
+    shadow = Product.query.filter_by(sku=sku_shadow).first()
+    if not shadow:
+        cat = Category.query.filter_by(nombre='TRASLADO IMPORTBOLTS').first()
+        if not cat:
+            cat = Category(nombre='TRASLADO IMPORTBOLTS', prefijo='IBT', contador=0)
+            db.session.add(cat)
+            db.session.flush()
+
+        shadow = Product(
+            sku=sku_shadow,
+            nombre=f"[TRASLADO IB] {prod_ib.nombre}",
+            categoria='TRASLADO IMPORTBOLTS',
+            calidad=prod_ib.calidad or '-',
+            ubicacion='ALMACÉN IMPORTBOLTS',
+            stock_actual=0, stock_minimo=0,
+            precio_unidad=prod_ib.precio_unidad or 0.0,
+            precio_caja=0.0, costo_referencial=0.0,
+            es_shadow_importbolts=True,
+            shadow_origen_sku=prod_ib.sku
+        )
+        db.session.add(shadow)
+        db.session.flush()
+    return shadow
+
+
+def registrar_traslado_venta(detalle, orden, prod_ib):
+    """SALIDA ImportBolts -> INGRESO Anclajes (compra) -> SALIDA Anclajes (venta a cliente)."""
+    cantidad = detalle.cantidad
+    codigo = f"NP-{orden.id:05d}"
+
+    # 1. Sale de verdad del almacén de ImportBolts
+    stock_ant_ib = prod_ib.stock_actual
+    prod_ib.stock_actual -= cantidad
+    db.session.add(ProductMovementImportBolts(
+        product_id=prod_ib.id, user_id=session['user_id'], tipo='SALIDA',
+        cantidad=cantidad, stock_anterior=stock_ant_ib, stock_nuevo=prod_ib.stock_actual,
+        motivo=f"Venta Inter-Empresa a Anclajes {codigo} ({orden.cliente.nombre[:15]})"
+    ))
+
+    shadow = obtener_o_crear_shadow_product(prod_ib)
+
+    # 2. Ingresa a Anclajes (compra inter-empresa, pendiente de facturar)
+    stock_ant_s1 = shadow.stock_actual
+    shadow.stock_actual += cantidad
+    db.session.add(ProductMovement(
+        product_id=shadow.id, user_id=session['user_id'], tipo='ENTRADA',
+        cantidad=cantidad, stock_anterior=stock_ant_s1, stock_nuevo=shadow.stock_actual,
+        motivo=f"Compra Inter-Empresa de ImportBolts {codigo} (Pend. facturar)"
+    ))
+
+    # 3. Sale de Anclajes como venta al cliente final
+    stock_ant_s2 = shadow.stock_actual
+    shadow.stock_actual -= cantidad
+    db.session.add(ProductMovement(
+        product_id=shadow.id, user_id=session['user_id'], tipo='SALIDA',
+        cantidad=cantidad, stock_anterior=stock_ant_s2, stock_nuevo=shadow.stock_actual,
+        motivo=f"Venta a Cliente Final {codigo} ({orden.cliente.nombre[:15]})"
+    ))
+
+    # 4. Ficha de control administrativo (para que Facturación formalice el documento externo)
+    db.session.add(IntercompanyTransfer(
+        order_id=orden.id, order_detail_id=detalle.id,
+        product_importbolts_id=prod_ib.id, cantidad=cantidad,
+        fecha_despacho=hora_peru(), despachado_por_id=session['user_id'],
+        estado_facturacion='PENDIENTE'
+    ))
+
+
+def registrar_traslado_devolucion(detalle, orden, prod_ib, motivo_dev):
+    """Reversa completa hasta que el material regresa físicamente a ImportBolts."""
+    cantidad = detalle.cantidad
+    codigo = f"NP-{orden.id:05d}"
+    shadow = obtener_o_crear_shadow_product(prod_ib)
+
+    # 1. Reingresa a Anclajes (vuelve del cliente)
+    stock_ant_s1 = shadow.stock_actual
+    shadow.stock_actual += cantidad
+    db.session.add(ProductMovement(
+        product_id=shadow.id, user_id=session['user_id'], tipo='ENTRADA',
+        cantidad=cantidad, stock_anterior=stock_ant_s1, stock_nuevo=shadow.stock_actual,
+        motivo=f"Devolución Cliente {codigo} | {motivo_dev}"
+    ))
+
+    # 2. Sale de Anclajes de vuelta hacia ImportBolts (reversa la compra)
+    stock_ant_s2 = shadow.stock_actual
+    shadow.stock_actual -= cantidad
+    db.session.add(ProductMovement(
+        product_id=shadow.id, user_id=session['user_id'], tipo='SALIDA',
+        cantidad=cantidad, stock_anterior=stock_ant_s2, stock_nuevo=shadow.stock_actual,
+        motivo=f"Reversa Compra Inter-Empresa {codigo} (Retorna a ImportBolts)"
+    ))
+
+    # 3. Ingresa de vuelta al almacén real de ImportBolts
+    stock_ant_ib = prod_ib.stock_actual
+    prod_ib.stock_actual += cantidad
+    db.session.add(ProductMovementImportBolts(
+        product_id=prod_ib.id, user_id=session['user_id'], tipo='ENTRADA',
+        cantidad=cantidad, stock_anterior=stock_ant_ib, stock_nuevo=prod_ib.stock_actual,
+        motivo=f"Devolución - Retorno de mercadería {codigo} | {motivo_dev}"
+    ))
+
+    # 4. Si aún no se había facturado externamente, se anula el pendiente
+    traslado = IntercompanyTransfer.query.filter_by(
+        order_detail_id=detalle.id, estado_facturacion='PENDIENTE'
+    ).first()
+    if traslado:
+        traslado.estado_facturacion = 'ANULADO_DEVOLUCION'
+        traslado.notas = (traslado.notas or '') + f" | Devuelto: {motivo_dev}"
+
 def get_producto_detalle(detalle):
     return detalle.product_importbolts if detalle.origen_inventario == 'IMPORTBOLTS' else detalle.product
 
@@ -5038,22 +5153,15 @@ def procesar_salida_almacen(order_id):
         return {'status': 'error', 'msg': 'No autorizado'}, 403
     
     orden = Order.query.get_or_404(order_id)
-    
-    # CAMBIO: validar nuevo estado
     if orden.estado != 'Por Despachar':
         return {'status': 'error', 'msg': 'La cotización no está lista para despacho.'}
     
-    # ==============================================================
-    # 1. VERIFICACIÓN DE SEGURIDAD: ¿Aún hay stock suficiente?
-    # ==============================================================
-    errores_stock = []   # <-- FALTABA ESTA LÍNEA
-
+    errores_stock = []
     for detalle in orden.details:
         if detalle.item_type == 'PRODUCTO':
             prod = get_producto_detalle(detalle)
             if prod and prod.stock_actual < detalle.cantidad:
                 errores_stock.append(f"{prod.nombre} (Faltan {detalle.cantidad - prod.stock_actual})")
-                
         elif detalle.item_type == 'GLB':
             for comp in detalle.kit_components:
                 prod_c = comp.product
@@ -5061,46 +5169,26 @@ def procesar_salida_almacen(order_id):
                 if prod_c.stock_actual < cant_req:
                     errores_stock.append(f"Componente {prod_c.sku} en Kit (Faltan {cant_req - prod_c.stock_actual})")
 
-    if errores_stock:   # <-- FALTABA ESTA VALIDACIÓN
+    if errores_stock:
         return {'status': 'error', 'msg': '¡ALERTA! Stock insuficiente: ' + ', '.join(errores_stock)}
 
-    # ==============================================================
-    # 2. DESCARGO (Si pasó la validación, el try se ejecuta normal)
-    # ==============================================================
     try:
         for detalle in orden.details:
             if detalle.item_type == 'PRODUCTO':
-                prod = get_producto_detalle(detalle)
-                if not prod:
-                    continue
-                ModeloKardex = get_modelo_kardex(detalle.origen_inventario)
-                
-                stock_anterior = prod.stock_actual
-                prod.stock_actual -= detalle.cantidad
-                
-                kardex = ModeloKardex(
-                    product_id=prod.id,
-                    user_id=session['user_id'],
-                    tipo='SALIDA',
-                    cantidad=detalle.cantidad,
-                    stock_anterior=stock_anterior,
-                    stock_nuevo=prod.stock_actual,
-                    motivo=f"Salida Almacén NP-{orden.id:05d} ({orden.cliente.nombre[:15]})"
-                )
-                db.session.add(kardex)
-
-                # --- NUEVO: SI ES DE IMPORTBOLTS, REGISTRAR EL TRASLADO INTER-EMPRESA ---
                 if detalle.origen_inventario == 'IMPORTBOLTS':
-                    traslado = IntercompanyTransfer(
-                        order_id=orden.id,
-                        order_detail_id=detalle.id,
-                        product_importbolts_id=detalle.product_id_importbolts,
-                        cantidad=detalle.cantidad,
-                        fecha_despacho=hora_peru(),
-                        despachado_por_id=session['user_id'],
-                        estado_facturacion='PENDIENTE'
-                    )
-                    db.session.add(traslado)
+                    prod_ib = detalle.product_importbolts
+                    if prod_ib:
+                        registrar_traslado_venta(detalle, orden, prod_ib)
+                else:
+                    prod = detalle.product
+                    if prod:
+                        stock_anterior = prod.stock_actual
+                        prod.stock_actual -= detalle.cantidad
+                        db.session.add(ProductMovement(
+                            product_id=prod.id, user_id=session['user_id'], tipo='SALIDA',
+                            cantidad=detalle.cantidad, stock_anterior=stock_anterior, stock_nuevo=prod.stock_actual,
+                            motivo=f"Salida Almacén NP-{orden.id:05d} ({orden.cliente.nombre[:15]})"
+                        ))
 
             elif detalle.item_type == 'GLB':
                 for comp in detalle.kit_components:
@@ -5108,21 +5196,14 @@ def procesar_salida_almacen(order_id):
                     cantidad_total = comp.cantidad_requerida * detalle.cantidad
                     stock_ant_c = prod_c.stock_actual
                     prod_c.stock_actual -= cantidad_total
-                    
-                    kardex_c = ProductMovement(
-                        product_id=prod_c.id,
-                        user_id=session['user_id'],
-                        tipo='SALIDA',
-                        cantidad=cantidad_total,
-                        stock_anterior=stock_ant_c,
-                        stock_nuevo=prod_c.stock_actual,
+                    db.session.add(ProductMovement(
+                        product_id=prod_c.id, user_id=session['user_id'], tipo='SALIDA',
+                        cantidad=cantidad_total, stock_anterior=stock_ant_c, stock_nuevo=prod_c.stock_actual,
                         motivo=f"Salida Kit NP-{orden.id:05d} - {detalle.nombre_personalizado_titulo[:15]}"
-                    )
-                    db.session.add(kardex_c)
+                    ))
 
         orden.estado = 'Entregado'
         db.session.commit()
-        
         return {'status': 'success', 'msg': 'Stock descontado. Orden cerrada como Entregada.'}
         
     except Exception as e:
@@ -5138,38 +5219,26 @@ def procesar_devolucion(order_id):
     if orden.estado not in ['Entregado', 'Despachado']:
         return {'status': 'error', 'msg': 'Solo se pueden devolver órdenes despachadas.'}
     
-    # LECTURA A PRUEBA DE FALLOS
     data = request.get_json(silent=True) or request.form
     motivo_dev = data.get('motivo', '') or 'Devolución sin motivo especificado'
 
     try:
-        # --- LÓGICA DE REINGRESO DE STOCK Y KARDEX (AHORA SEPARADA POR INVENTARIO) ---
         for detalle in orden.details:
             if detalle.item_type == 'PRODUCTO':
-                prod = get_producto_detalle(detalle)
-                if not prod:
-                    continue
-                ModeloKardex = get_modelo_kardex(detalle.origen_inventario)
-
-                stock_anterior = prod.stock_actual
-                prod.stock_actual += detalle.cantidad
-                
-                kardex = ModeloKardex(
-                    product_id=prod.id, user_id=session['user_id'], tipo='ENTRADA',
-                    cantidad=detalle.cantidad, stock_anterior=stock_anterior,
-                    stock_nuevo=prod.stock_actual,
-                    motivo=f"Devolución NP-{orden.id:05d} | {motivo_dev}"
-                )
-                db.session.add(kardex)
-
-                # --- NUEVO: SI ES DE IMPORTBOLTS, ANULAR EL TRASLADO PENDIENTE (SI AÚN NO SE FACTURÓ) ---
                 if detalle.origen_inventario == 'IMPORTBOLTS':
-                    traslado = IntercompanyTransfer.query.filter_by(
-                        order_detail_id=detalle.id, estado_facturacion='PENDIENTE'
-                    ).first()
-                    if traslado:
-                        traslado.estado_facturacion = 'ANULADO_DEVOLUCION'
-                        traslado.notas = (traslado.notas or '') + f" | Anulado por devolución: {motivo_dev}"
+                    prod_ib = detalle.product_importbolts
+                    if prod_ib:
+                        registrar_traslado_devolucion(detalle, orden, prod_ib, motivo_dev)
+                else:
+                    prod = detalle.product
+                    if prod:
+                        stock_anterior = prod.stock_actual
+                        prod.stock_actual += detalle.cantidad
+                        db.session.add(ProductMovement(
+                            product_id=prod.id, user_id=session['user_id'], tipo='ENTRADA',
+                            cantidad=detalle.cantidad, stock_anterior=stock_anterior, stock_nuevo=prod.stock_actual,
+                            motivo=f"Devolución NP-{orden.id:05d} | {motivo_dev}"
+                        ))
 
             elif detalle.item_type == 'GLB':
                 for comp in detalle.kit_components:
@@ -5177,21 +5246,17 @@ def procesar_devolucion(order_id):
                     cantidad_total = comp.cantidad_requerida * detalle.cantidad
                     stock_ant_c = prod_c.stock_actual
                     prod_c.stock_actual += cantidad_total
-                    
-                    kardex_c = ProductMovement(
+                    db.session.add(ProductMovement(
                         product_id=prod_c.id, user_id=session['user_id'], tipo='ENTRADA',
                         cantidad=cantidad_total, stock_anterior=stock_ant_c, stock_nuevo=prod_c.stock_actual,
                         motivo=f"Dev. Kit NP-{orden.id:05d}"
-                    )
-                    db.session.add(kardex_c)
+                    ))
 
-        # GUARDAMOS FECHAS Y MOTIVOS
         orden.estado = 'Devuelto'
         orden.fecha_devolucion = hora_peru()
-        orden.fecha_cancelacion = hora_peru() # Usado para tabla principal
+        orden.fecha_cancelacion = hora_peru()
         orden.motivo_devolucion = motivo_dev
-        orden.detalle_cancelacion = motivo_dev # Usado para tabla principal
-
+        orden.detalle_cancelacion = motivo_dev
         db.session.commit()
         return {'status': 'success', 'msg': 'Stock reingresado y orden Devuelta.'}
         
@@ -5931,20 +5996,26 @@ def marcar_traslado_facturado(traslado_id):
 # --- RUTA SECRETA PARA INICIALIZAR LA BASE DE DATOS EN RENDER ---
 # --- RUTA SECRETA PARA CREAR/RESETEAR LA BASE DE DATOS DESDE EL NAVEGADOR ---
 
-@app.route('/fix_estados_y_fechas')
-def fix_estados_y_fechas():
+@app.route('/fix_shadow_product_columns')
+def fix_shadow_product_columns():
     try:
-        with db.engine.connect() as conn:
-            conn.execute(text('ALTER TABLE "order" ADD COLUMN fecha_revision_inicial TIMESTAMP'))
-            conn.commit()
-        return "<h2>✅ Base de datos actualizada: Columna fecha_revision_inicial agregada con éxito.</h2>"
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            try:
+                conn.execute(text("ALTER TABLE product ADD COLUMN es_shadow_importbolts BOOLEAN DEFAULT FALSE"))
+            except Exception as e:
+                print(f"Aviso: {e}")
+            try:
+                conn.execute(text("ALTER TABLE product ADD COLUMN shadow_origen_sku VARCHAR(50)"))
+            except Exception as e:
+                print(f"Aviso: {e}")
+        return "<h2>✅ Columnas de producto sombra agregadas.</h2>"
     except Exception as e:
-        return f"<h2>Aviso: {str(e)} (Si dice 'duplicate column name', significa que ya se agregó).</h2>"
-    
+        return f"<h2>Error: {str(e)}</h2>"
+
 @app.route('/fix_intercompany_transfer')
 def fix_intercompany_transfer():
     try:
-        db.create_all()  # Crea solo las tablas nuevas que aún no existen (no borra nada)
+        db.create_all()
         return "<h2>✅ Tabla intercompany_transfer creada correctamente.</h2>"
     except Exception as e:
         return f"<h2>❌ Error: {str(e)}</h2>"
