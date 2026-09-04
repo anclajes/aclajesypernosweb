@@ -36,9 +36,9 @@ from xhtml2pdf import pisa
 
 
 def obtener_o_crear_shadow_product(prod_ib):
-    """Producto 'sombra' en el catálogo de Anclajes que representa el traslado de un SKU de 
-    ImportBolts. Su stock siempre vuelve a 0 en la misma operación, pero deja huella completa 
-    en el Kardex de Anclajes."""
+    """Producto 'sombra' en el catálogo de Anclajes: NO es un producto de venta, es solo
+    un asiento contable para dejar rastro completo en el Kardex de Anclajes. Por eso NO copia
+    calidad/precio del original — eso evitaría que alguien lo confunda con un producto real."""
     sku_shadow = f"IBT-{prod_ib.sku}"
     shadow = Product.query.filter_by(sku=sku_shadow).first()
     if not shadow:
@@ -50,12 +50,13 @@ def obtener_o_crear_shadow_product(prod_ib):
 
         shadow = Product(
             sku=sku_shadow,
-            nombre=f"[TRASLADO IB] {prod_ib.nombre}",
+            nombre=f"[NO VENDER - REGISTRO CONTABLE] {prod_ib.nombre} (Ref. ImportBolts: {prod_ib.sku})",
             categoria='TRASLADO IMPORTBOLTS',
-            calidad=prod_ib.calidad or '-',
-            ubicacion='ALMACÉN IMPORTBOLTS',
+            calidad='N/A - REGISTRO CONTABLE',
+            ubicacion='N/A - NO ES STOCK FÍSICO',
+            estado='NO USAR PARA VENTAS',
             stock_actual=0, stock_minimo=0,
-            precio_unidad=prod_ib.precio_unidad or 0.0,
+            precio_unidad=0.0,       # <-- Nunca copiar precio real: no es un producto de venta
             precio_caja=0.0, costo_referencial=0.0,
             es_shadow_importbolts=True,
             shadow_origen_sku=prod_ib.sku
@@ -1945,10 +1946,13 @@ def buscar_cliente(documento):
 def get_productos_por_categoria(category_id):
     try:
         if category_id == 0:
-            productos = Product.query.limit(500).all()
+            productos = Product.query.filter(Product.es_shadow_importbolts.isnot(True)).limit(500).all()
         else:
             cat = Category.query.get_or_404(category_id)
-            productos = Product.query.filter(Product.categoria == cat.nombre).all()
+            productos = Product.query.filter(
+                Product.categoria == cat.nombre,
+                Product.es_shadow_importbolts.isnot(True)
+            ).all()
         
         lista = []
         for p in productos:
@@ -2442,8 +2446,8 @@ def nueva_venta():
 
     # --- MÉTODO GET (MOSTRAR PANTALLA) ---
 # --- MÉTODO GET (MOSTRAR PANTALLA DE NUEVA VENTA) ---
-    productos = Product.query.all()
-    categorias = Category.query.all()
+    productos = Product.query.filter(Product.es_shadow_importbolts.isnot(True)).all()
+    categorias = Category.query.filter(Category.nombre != 'TRASLADO IMPORTBOLTS').all()
     categorias_importbolts = CategoryImportBolts.query.all()   # <-- NUEVO
     
     tc_hoy = obtener_tipo_cambio(usuario_solicitante="Sistema Automático")
@@ -4651,8 +4655,8 @@ def editar_venta(order_id):
         items_js.append(item)
 
     # 3. Datos Generales
-    productos = Product.query.all()
-    categorias = Category.query.all()
+    productos = Product.query.filter(Product.es_shadow_importbolts.isnot(True)).all()
+    categorias = Category.query.filter(Category.nombre != 'TRASLADO IMPORTBOLTS').all()
     config_tc = SystemConfig.query.get('tipo_cambio')
     
     return render_template('nueva_venta.html',
@@ -5757,10 +5761,10 @@ def exportar_excel_importbolts():
     if session.get('role') not in ['admin', 'almacen', 'administracion']: return "No autorizado", 403
     
     productos = db.session.query(
-        ProductImportBolts.sku, ProductImportBolts.nombre, ProductImportBolts.categoria, 
-        ProductImportBolts.calidad, ProductImportBolts.ubicacion, ProductImportBolts.stock_actual, 
-        ProductImportBolts.stock_minimo, ProductImportBolts.precio_unidad, ProductImportBolts.precio_caja
-    ).all()
+        Product.sku, Product.nombre, Product.categoria, Product.calidad, 
+        Product.ubicacion, Product.stock_actual, Product.stock_minimo, 
+        Product.precio_unidad, Product.precio_caja
+    ).filter(Product.es_shadow_importbolts.isnot(True)).all()
     
     data = []
     for p in productos:
@@ -5955,20 +5959,119 @@ def traslados_intercompany():
     if session.get('role') not in ['admin', 'administracion']:
         return "Acceso denegado", 403
     
-    filtro = request.args.get('estado', 'PENDIENTE')
-    query = IntercompanyTransfer.query
+    filtro_estado = request.args.get('estado', 'PENDIENTE')
+    busqueda = request.args.get('busqueda', '').strip()
+    fecha_inicio = request.args.get('fecha_inicio', '')
+    fecha_fin = request.args.get('fecha_fin', '')
+    page = request.args.get('page', 1, type=int)
     
-    if filtro != 'todos':
-        query = query.filter_by(estado_facturacion=filtro)
+    query = IntercompanyTransfer.query.join(Order).join(ProductImportBolts)
     
-    traslados = query.order_by(IntercompanyTransfer.fecha_despacho.desc()).all()
+    if filtro_estado != 'todos':
+        query = query.filter(IntercompanyTransfer.estado_facturacion == filtro_estado)
     
+    if busqueda:
+        term_id = busqueda
+        if busqueda.isdigit(): term_id = str(int(busqueda))
+        query = query.join(Client, Order.cliente_id == Client.id).filter(
+            or_(
+                ProductImportBolts.sku.ilike(f"%{busqueda}%"),
+                ProductImportBolts.nombre.ilike(f"%{busqueda}%"),
+                Client.nombre.ilike(f"%{busqueda}%"),
+                func.cast(IntercompanyTransfer.order_id, db.String).like(f"%{term_id}%"),
+                IntercompanyTransfer.numero_documento_externo.ilike(f"%{busqueda}%")
+            )
+        )
+    
+    if fecha_inicio and fecha_fin:
+        try:
+            start = datetime.strptime(fecha_inicio, '%Y-%m-%d')
+            end = datetime.strptime(fecha_fin + " 23:59:59", '%Y-%m-%d %H:%M:%S')
+            query = query.filter(IntercompanyTransfer.fecha_despacho.between(start, end))
+        except:
+            pass
+    
+    query = query.order_by(IntercompanyTransfer.fecha_despacho.desc())
+    pagination = query.paginate(page=page, per_page=25, error_out=False)
+    traslados = pagination.items
+    
+    # --- KPIs ---
     cuenta_pendientes = IntercompanyTransfer.query.filter_by(estado_facturacion='PENDIENTE').count()
+    cuenta_facturados_mes = IntercompanyTransfer.query.filter(
+        IntercompanyTransfer.estado_facturacion == 'FACTURADO',
+        extract('year', IntercompanyTransfer.fecha_facturacion) == hora_peru().year,
+        extract('month', IntercompanyTransfer.fecha_facturacion) == hora_peru().month
+    ).count()
+    
+    # Antigüedad del pendiente más viejo (para alertar si algo lleva mucho tiempo sin facturar)
+    pendiente_mas_antiguo = IntercompanyTransfer.query.filter_by(estado_facturacion='PENDIENTE')\
+        .order_by(IntercompanyTransfer.fecha_despacho.asc()).first()
+    dias_mas_antiguo = (hora_peru() - pendiente_mas_antiguo.fecha_despacho).days if pendiente_mas_antiguo else 0
     
     return render_template('traslados_intercompany.html', 
-                           traslados=traslados, 
-                           filtro_actual=filtro,
-                           cuenta_pendientes=cuenta_pendientes)
+                           traslados=traslados,
+                           pagination=pagination,
+                           filtro_actual=filtro_estado,
+                           busqueda=busqueda,
+                           fecha_inicio=fecha_inicio,
+                           fecha_fin=fecha_fin,
+                           cuenta_pendientes=cuenta_pendientes,
+                           cuenta_facturados_mes=cuenta_facturados_mes,
+                           dias_mas_antiguo=dias_mas_antiguo,
+                           hoy=hora_peru())
+
+@app.route('/traslados_intercompany/exportar')
+def exportar_traslados_intercompany():
+    if session.get('role') not in ['admin', 'administracion']:
+        return "Acceso denegado", 403
+    
+    filtro_estado = request.args.get('estado', 'PENDIENTE')
+    query = IntercompanyTransfer.query
+    if filtro_estado != 'todos':
+        query = query.filter_by(estado_facturacion=filtro_estado)
+    
+    traslados = query.order_by(IntercompanyTransfer.fecha_despacho.asc()).all()
+    
+    if not traslados:
+        flash('No hay traslados para exportar con este filtro.')
+        return redirect(url_for('traslados_intercompany'))
+    
+    data = []
+    for t in traslados:
+        orden = t.order
+        data.append({
+            'N° Cotización': f"COT-{t.order_id:05d}",
+            'Fecha Despacho': t.fecha_despacho.strftime('%d/%m/%Y %H:%M'),
+            'Cliente': orden.cliente.nombre if orden.cliente else '-',
+            'RUC/DNI Cliente': orden.cliente.documento if orden.cliente else '-',
+            'SKU ImportBolts': t.product_importbolts.sku,
+            'Descripción': t.product_importbolts.nombre,
+            'Cantidad': t.cantidad,
+            'Despachado por': t.despachado_por.nombre_completo if t.despachado_por else '-',
+            'Estado': t.estado_facturacion,
+            'N° Documento Externo': t.numero_documento_externo or '',
+            'Fecha Facturación': t.fecha_facturacion.strftime('%d/%m/%Y') if t.fecha_facturacion else '',
+            'Notas': t.notas or ''
+        })
+    
+    df = pd.DataFrame(data)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Traslados Intercompany')
+        workbook = writer.book
+        ws = writer.sheets['Traslados Intercompany']
+        formato_header = workbook.add_format({'bold': True, 'bg_color': '#004b87', 'font_color': 'white', 'border': 1})
+        for idx, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).map(len).max() if len(df) > 0 else 10, len(col)) + 2
+            ws.set_column(idx, idx, min(max_len, 45))
+            ws.write(0, idx, col, formato_header)
+        ws.freeze_panes(1, 0)
+        ws.autofilter(0, 0, len(df), len(df.columns) - 1)
+    
+    output.seek(0)
+    nombre_archivo = f"Traslados_Intercompany_{filtro_estado}_{hora_peru().strftime('%Y%m%d_%H%M')}.xlsx"
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name=nombre_archivo)
 
 
 @app.route('/api/marcar_traslado_facturado/<int:traslado_id>', methods=['POST'])

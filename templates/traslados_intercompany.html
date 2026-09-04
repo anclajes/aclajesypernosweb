@@ -1,21 +1,82 @@
 {% extends "base.html" %}
 
+{% block title %}Traslados Inter-Empresa{% endblock %}
+{% block subtitle %}Control de ventas con productos de ImportBolts pendientes de facturación externa{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2 class="mb-0">🔄 Traslados Inter-Empresa (ImportBolts → Anclajes)</h2>
-        <p class="text-muted small mb-0">Ventas despachadas con productos de ImportBolts, pendientes de formalizar con documento externo.</p>
-    </div>
-    {% if cuenta_pendientes > 0 %}
-    <span class="badge bg-danger fs-6">{{ cuenta_pendientes }} pendiente(s)</span>
-    {% endif %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3 gap-2">
+    <h2 class="mb-0 fs-4"><i class="bi bi-arrow-left-right text-primary"></i> Traslados Inter-Empresa</h2>
+    <a href="{{ url_for('exportar_traslados_intercompany', estado=filtro_actual) }}" class="btn btn-success shadow-sm">
+        <i class="bi bi-file-earmark-excel"></i> Exportar a Excel
+    </a>
 </div>
 
+<!-- KPIs -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 border-danger">
+            <div class="card-body py-3">
+                <div class="text-muted small fw-bold text-uppercase">Pendientes de Facturar</div>
+                <div class="fs-3 fw-bold text-danger">{{ cuenta_pendientes }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 border-success">
+            <div class="card-body py-3">
+                <div class="text-muted small fw-bold text-uppercase">Facturados este mes</div>
+                <div class="fs-3 fw-bold text-success">{{ cuenta_facturados_mes }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="card border-0 shadow-sm border-start border-4 {% if dias_mas_antiguo > 7 %}border-warning{% else %}border-secondary{% endif %}">
+            <div class="card-body py-3">
+                <div class="text-muted small fw-bold text-uppercase">Pendiente más antiguo</div>
+                <div class="fs-3 fw-bold {% if dias_mas_antiguo > 7 %}text-warning{% else %}text-secondary{% endif %}">
+                    {{ dias_mas_antiguo }} días
+                    {% if dias_mas_antiguo > 7 %}<i class="bi bi-exclamation-triangle-fill ms-1"></i>{% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3 bg-light border-0 shadow-sm">
+    <div class="card-body py-3">
+        <form method="GET" class="row g-2 align-items-end">
+            <input type="hidden" name="estado" value="{{ filtro_actual }}">
+            <div class="col-12 col-md-4">
+                <label class="small fw-bold text-muted">Buscar</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input type="text" name="busqueda" class="form-control" placeholder="N° Cotización, SKU, Cliente, N° Documento..." value="{{ busqueda }}">
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="small fw-bold text-muted">Desde</label>
+                <input type="date" name="fecha_inicio" class="form-control form-control-sm" value="{{ fecha_inicio }}">
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="small fw-bold text-muted">Hasta</label>
+                <input type="date" name="fecha_fin" class="form-control form-control-sm" value="{{ fecha_fin }}">
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-1">
+                <button type="submit" class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel-fill"></i> Filtrar</button>
+                <a href="{{ url_for('traslados_intercompany', estado=filtro_actual) }}" class="btn btn-outline-secondary btn-sm" title="Limpiar"><i class="bi bi-x-lg"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Pestañas de estado -->
 <ul class="nav nav-pills mb-3 gap-2">
     <li class="nav-item">
         <a class="btn {% if filtro_actual == 'PENDIENTE' %}btn-danger{% else %}btn-outline-danger{% endif %}" 
            href="{{ url_for('traslados_intercompany', estado='PENDIENTE') }}">
             <i class="bi bi-exclamation-circle"></i> Pendientes
+            {% if cuenta_pendientes > 0 %}<span class="badge bg-white text-danger ms-1">{{ cuenta_pendientes }}</span>{% endif %}
         </a>
     </li>
     <li class="nav-item">
@@ -25,7 +86,13 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="btn {% if filtro_actual == 'todos' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" 
+        <a class="btn {% if filtro_actual == 'ANULADO_DEVOLUCION' %}btn-secondary{% else %}btn-outline-secondary{% endif %}" 
+           href="{{ url_for('traslados_intercompany', estado='ANULADO_DEVOLUCION') }}">
+            <i class="bi bi-arrow-return-left"></i> Anulados por Devolución
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="btn {% if filtro_actual == 'todos' %}btn-dark{% else %}btn-outline-dark{% endif %}" 
            href="{{ url_for('traslados_intercompany', estado='todos') }}">
             <i class="bi bi-list-ul"></i> Todos
         </a>
@@ -33,12 +100,13 @@
 </ul>
 
 <div class="card shadow-sm border-0">
-    <div class="card-body p-0 table-responsive">
-        <table class="table table-hover align-middle mb-0 small">
-            <thead style="background-color:#004b87;" class="text-white text-nowrap">
+    <div class="card-body p-0 table-responsive" style="min-height: 300px;">
+        <table class="table table-hover align-middle mb-0 small text-nowrap">
+            <thead style="background-color:#004b87;" class="text-white">
                 <tr>
                     <th class="ps-3">Cotización</th>
-                    <th>Fecha Despacho</th>
+                    <th>Antigüedad</th>
+                    <th>Cliente</th>
                     <th>Producto (ImportBolts)</th>
                     <th class="text-center">Cant.</th>
                     <th>Despachado por</th>
@@ -49,14 +117,31 @@
             </thead>
             <tbody>
                 {% for t in traslados %}
-                <tr>
-                    <td class="ps-3 fw-bold text-primary">COT-{{ "%05d"|format(t.order_id) }}</td>
-                    <td>{{ t.fecha_despacho.strftime('%d/%m/%Y %H:%M') }}</td>
-                    <td>
-                        <strong>{{ t.product_importbolts.sku }}</strong><br>
-                        <span class="text-muted">{{ t.product_importbolts.nombre }}</span>
+                {% set dias_pendiente = ((hoy - t.fecha_despacho).days) if t.estado_facturacion == 'PENDIENTE' else None %}
+                <tr class="{% if dias_pendiente and dias_pendiente > 7 %}table-warning{% endif %}">
+                    <td class="ps-3 fw-bold text-primary">
+                        <a href="{{ url_for('historial_ventas') }}" class="text-decoration-none" title="Ver en Historial">
+                            COT-{{ "%05d"|format(t.order_id) }}
+                        </a>
+                        <div class="text-muted" style="font-size: 0.7rem;">{{ t.fecha_despacho.strftime('%d/%m/%Y %H:%M') }}</div>
                     </td>
-                    <td class="text-center fw-bold">{{ t.cantidad }}</td>
+                    <td>
+                        {% if dias_pendiente is not none %}
+                            {% if dias_pendiente > 7 %}
+                                <span class="badge bg-warning text-dark"><i class="bi bi-clock-history"></i> {{ dias_pendiente }} días</span>
+                            {% elif dias_pendiente > 2 %}
+                                <span class="badge bg-light text-dark border">{{ dias_pendiente }} días</span>
+                            {% else %}
+                                <span class="badge bg-light text-muted border">{{ dias_pendiente }} días</span>
+                            {% endif %}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="text-truncate" style="max-width: 150px;">{{ t.order.cliente.nombre if t.order.cliente else '-' }}</td>
+                    <td>
+                        <strong class="text-primary">{{ t.product_importbolts.sku }}</strong><br>
+                        <span class="text-muted text-wrap" style="font-size: 0.8rem;">{{ t.product_importbolts.nombre }}</span>
+                    </td>
+                    <td class="text-center fw-bold fs-6">{{ t.cantidad }}</td>
                     <td>{{ t.despachado_por.nombre_completo if t.despachado_por else '-' }}</td>
                     <td class="text-center">
                         {% if t.estado_facturacion == 'PENDIENTE' %}
@@ -64,29 +149,54 @@
                         {% elif t.estado_facturacion == 'FACTURADO' %}
                             <span class="badge bg-success">FACTURADO</span>
                         {% else %}
-                            <span class="badge bg-secondary">ANULADO (Devolución)</span>
+                            <span class="badge bg-secondary" title="La venta fue devuelta. Si ya se había facturado, gestione la nota de crédito externa manualmente.">
+                                ANULADO (Devolución)
+                            </span>
                         {% endif %}
                     </td>
                     <td>
                         {% if t.numero_documento_externo %}
                             <span class="text-dark fw-bold">{{ t.numero_documento_externo }}</span>
                             <br><small class="text-muted">{{ t.fecha_facturacion.strftime('%d/%m/%Y') if t.fecha_facturacion else '' }}</small>
-                        {% else %}—{% endif %}
+                        {% else %}<span class="text-muted fst-italic">—</span>{% endif %}
                     </td>
                     <td class="text-center">
                         {% if t.estado_facturacion == 'PENDIENTE' %}
-                        <button class="btn btn-sm btn-success" onclick="abrirModalFacturar({{ t.id }}, 'COT-{{ "%05d"|format(t.order_id) }}')">
+                        <button class="btn btn-sm btn-success shadow-sm" onclick="abrirModalFacturar({{ t.id }}, 'COT-{{ "%05d"|format(t.order_id) }}')">
                             <i class="bi bi-check2"></i> Marcar Facturado
+                        </button>
+                        {% elif t.estado_facturacion == 'FACTURADO' %}
+                        <button class="btn btn-sm btn-outline-secondary" onclick="verNotasTraslado('{{ t.notas or "Sin notas adicionales." }}')" title="Ver notas">
+                            <i class="bi bi-eye"></i>
                         </button>
                         {% endif %}
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" class="text-center py-5 text-muted">No hay traslados en este filtro.</td></tr>
+                <tr><td colspan="9" class="text-center py-5 text-muted">
+                    <div class="opacity-25 display-1"><i class="bi bi-inbox"></i></div>
+                    <p class="mt-2">No hay traslados en este filtro.</p>
+                </td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    {% if pagination.pages > 1 %}
+    <div class="card-footer bg-white py-3">
+        <nav aria-label="Navegación">
+            <ul class="pagination pagination-sm justify-content-center mb-0 flex-wrap">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('traslados_intercompany', page=pagination.prev_num, estado=filtro_actual, busqueda=busqueda, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin) }}">Ant</a>
+                </li>
+                <li class="page-item disabled"><span class="page-link">Pág. {{ pagination.page }} de {{ pagination.pages }} · {{ pagination.total }} registros</span></li>
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('traslados_intercompany', page=pagination.next_num, estado=filtro_actual, busqueda=busqueda, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin) }}">Sig</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Modal para marcar como facturado -->
@@ -142,6 +252,10 @@ function confirmarFacturado() {
                 Swal.fire('Error', data.msg, 'error');
             }
         });
+}
+
+function verNotasTraslado(notas) {
+    Swal.fire({ title: 'Notas del Traslado', text: notas, icon: 'info', confirmButtonText: 'Cerrar' });
 }
 </script>
 {% endblock %}
