@@ -146,22 +146,22 @@
                         <label class="small text-muted mb-1 fw-bold">Dirección Fiscal (SUNAT)</label>
                         <input type="text" id="cli_dir" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
                     </div>
-                    <!-- NUEVOS CAMPOS DE UBICACIÓN (GRID) -->
-                    <div class="col-4 col-sm-3">
+                    <!-- NUEVOS CAMPOS DE UBICACIÓN (GRID - AHORA 2 COLUMNAS, MÁS ESPACIOSO) -->
+                    <div class="col-12 col-sm-6">
+                        <label class="small text-muted mb-1 fw-bold">Departamento</label>
+                        <input type="text" id="cli_departamento" class="form-control form-control-sm bg-white shadow-sm border-0 text-truncate" readonly>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="small text-muted mb-1 fw-bold">Provincia</label>
+                        <input type="text" id="cli_provincia" class="form-control form-control-sm bg-white shadow-sm border-0 text-truncate" readonly>
+                    </div>
+                    <div class="col-12 col-sm-6">
+                        <label class="small text-muted mb-1 fw-bold">Distrito</label>
+                        <input type="text" id="cli_distrito" class="form-control form-control-sm bg-white shadow-sm border-0 text-truncate" readonly>
+                    </div>
+                    <div class="col-12 col-sm-6">
                         <label class="small text-muted mb-1 fw-bold">Ubigeo</label>
                         <input type="text" id="cli_ubigeo" class="form-control form-control-sm bg-white shadow-sm border-0 text-center" readonly>
-                    </div>
-                    <div class="col-8 col-sm-3">
-                        <label class="small text-muted mb-1 fw-bold">Departamento</label>
-                        <input type="text" id="cli_departamento" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
-                    </div>
-                    <div class="col-6 col-sm-3">
-                        <label class="small text-muted mb-1 fw-bold">Provincia</label>
-                        <input type="text" id="cli_provincia" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
-                    </div>
-                    <div class="col-6 col-sm-3">
-                        <label class="small text-muted mb-1 fw-bold">Distrito</label>
-                        <input type="text" id="cli_distrito" class="form-control form-control-sm bg-white shadow-sm border-0" readonly>
                     </div>
 
                     <div class="col-12">
@@ -415,10 +415,16 @@
                         </div>
                         <div class="col-12 col-md-4">
                             <label class="small text-muted mb-1 fw-bold" style="color: var(--theme-primary) !important;">3. Buscar Producto</label>
+                            <div class="input-group input-group-sm mb-1 shadow-sm">
+                                <span class="input-group-text bg-warning bg-opacity-25 border-warning" title="Escaneo rápido de código"><i class="bi bi-upc-scan"></i></span>
+                                <input type="text" id="inputEscaneoRapido" class="form-control border-warning fw-bold" 
+                                    placeholder="Escanear/Teclear código exacto y Enter..."
+                                    onkeydown="if(event.key === 'Enter'){ event.preventDefault(); buscarPorCodigoExacto(); }">
+                            </div>
                             <select class="form-select shadow-sm" id="productoSelect" style="width: 100%;">
-                                <option value="" disabled selected>Escriba para buscar...</option>
+                                <option value="" disabled selected>Escriba el código o la descripción...</option>
                             </select>
-                        </div>
+                        </div>  
                     </div>
                 </div>
 
@@ -1054,6 +1060,7 @@ window.aplicarDescuentoItem = function(index) {
         
 
         // Exponer funciones al window
+        window.buscarPorCodigoExacto = buscarPorCodigoExacto;
 
         window.iniciarCambioMoneda = iniciarCambioMoneda;
 
@@ -2731,10 +2738,11 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
                 $('#cli_dir').val(data.direccion || '').prop('readonly', true);
                 $('#inputDireccionEntrega').val(data.direccion || '');
                 
-                $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
-                $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
-                $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
-                $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+                setCampoConTooltip('cli_ubigeo', data.ubigeo);
+                setCampoConTooltip('cli_departamento', data.departamento);
+                setCampoConTooltip('cli_provincia', data.provincia);
+                setCampoConTooltip('cli_distrito', data.distrito);
+                $('#cli_ubigeo, #cli_departamento, #cli_provincia, #cli_distrito').prop('readonly', true);
 
                 // ✅ FIX: usa data.id (el RUC), no "numero" (esa variable no existe aquí)
                 let urlRubro = `/api/obtener_rubro_cliente/${data.id}`;
@@ -2778,7 +2786,7 @@ document.getElementById('btnAgregar').addEventListener('click', () => {
         
 
     $('#productoSelect').select2({ 
-        placeholder: "Buscar producto...", allowClear: true, width: '100%',
+        placeholder: "Escriba el Código (SKU) o la Descripción...", allowClear: true, width: '100%',
         templateResult: function (d) {  
             if (!d.id) return d.text; 
             
@@ -2907,10 +2915,11 @@ function buscarClienteApi(force = false) {
             $('#cli_dir').val(data.direccion || '').prop('readonly', true);
             $('#inputDireccionEntrega').val(data.direccion || '');
             
-            $('#cli_ubigeo').val(data.ubigeo || '').prop('readonly', true);
-            $('#cli_departamento').val(data.departamento || '').prop('readonly', true);
-            $('#cli_provincia').val(data.provincia || '').prop('readonly', true);
-            $('#cli_distrito').val(data.distrito || '').prop('readonly', true);
+            setCampoConTooltip('cli_ubigeo', data.ubigeo);
+            setCampoConTooltip('cli_departamento', data.departamento);
+            setCampoConTooltip('cli_provincia', data.provincia);
+            setCampoConTooltip('cli_distrito', data.distrito);
+            $('#cli_ubigeo, #cli_departamento, #cli_provincia, #cli_distrito').prop('readonly', true);
 
             // ✅ FIX: usa el contexto de vendedor si viene del Directorio
             let urlRubro = `/api/obtener_rubro_cliente/${numero}`;
@@ -4607,6 +4616,62 @@ function cargarProductos() {
     });
 }
 
+function buscarPorCodigoExacto() {
+    const codigo = document.getElementById('inputEscaneoRapido').value.trim();
+    if (!codigo) return;
+
+    // Busca en las opciones YA CARGADAS del select actual (respeta familia/calidad/inventario elegidos)
+    const select = document.getElementById('productoSelect');
+    let encontrado = null;
+
+    for (let opt of select.options) {
+        const sku = (opt.getAttribute('data-sku') || '').toLowerCase();
+        if (sku === codigo.toLowerCase()) {
+            encontrado = opt;
+            break;
+        }
+    }
+
+    if (encontrado) {
+        $('#productoSelect').val(encontrado.value).trigger('change');
+        document.getElementById('inputEscaneoRapido').value = '';
+        document.getElementById('inputEscaneoRapido').focus();
+        return;
+    }
+
+    // Si no está en la lista actual (porque hay un filtro de Familia/Calidad puesto), 
+    // buscamos directo en el inventario activo completo (Anclajes o ImportBolts, según el toggle)
+    let url = (inventarioActivo === 'IMPORTBOLTS')
+        ? '/api/productos_por_categoria_importbolts/0'
+        : '/api/productos_por_categoria/0';
+
+    fetch(url).then(r => r.json()).then(data => {
+        const match = data.productos.find(p => p.sku.toLowerCase() === codigo.toLowerCase());
+        if (!match) {
+            return Swal.fire({
+                icon: 'warning', title: 'No encontrado',
+                text: `No se encontró ningún producto con el código "${codigo}" en el inventario de ${nombreInventario(inventarioActivo)}.`,
+                timer: 2500, showConfirmButton: false
+            });
+        }
+
+        // Limpiar filtros de Familia/Calidad para no ocultar el resultado encontrado
+        $('#filtroFamiliaVenta').val('');
+        $('#filtroCalidadVenta').html('<option value="">-- Todas --</option>').prop('disabled', true);
+
+        const select2 = $('#productoSelect');
+        select2.empty();
+        const o = new Option(match.nombre, match.id, true, true);
+        $(o).attr({
+            'data-sku': match.sku, 'data-stock': match.stock, 'data-punit': match.p_unidad,
+            'data-estado': match.estado || '', 'data-origen': inventarioActivo
+        });
+        select2.append(o).trigger('change');
+
+        document.getElementById('inputEscaneoRapido').value = '';
+    });
+}
+
 
 
     // --- NUEVAS FUNCIONES PARA DIRECTORIO DE CLIENTES ---
@@ -5245,6 +5310,12 @@ function actualizarLockVisualInventario() {
         labelAnclajes.title = '';
         labelImportBolts.title = '';
     }
+}
+function setCampoConTooltip(idCampo, valor) {
+    const el = document.getElementById(idCampo);
+    if (!el) return;
+    el.value = valor || '';
+    el.title = valor || '';
 }
 
 </script>
